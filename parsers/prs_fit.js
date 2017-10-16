@@ -84,6 +84,7 @@ function getLessonsForRow(scheduleTable, rowN) {
                         colsToSkip++;
                         return;
                     } else if (isDateCol) {
+                        result.time = cellText;
                         if (celRowSpan === 2) {
                             // если ячецка даты с rowspan = 2, то нужно обрабатывать зеленую неделю
                             result.hasGreen = true;
@@ -93,9 +94,12 @@ function getLessonsForRow(scheduleTable, rowN) {
                     }
                 } else {
                     // для зелёной недели
-                    if (celRowSpan > 2 || isDateCol) {
+                    if (celRowSpan > 2) {
                         colsToSkip++;
-                        console.log('skiping k=%d text=%s', k, cellText);
+                        return;
+                    } else if (isDateCol) {
+                        result.time = cellText;
+                        colsToSkip++;
                         return;
                     }
                 }
@@ -340,8 +344,6 @@ function connectLessonsGroups(groups, timeRow) {
 module.exports.parse = function parse(course, scheduleTable) {
     const groups = parseGroupsRow(scheduleTable); // массив с группами и их весами
 
-    //printRow(scheduleTable, groups, 2);
-
     const dayRowIndexes = grabDaysIndexes(scheduleTable); // массив объектов, хранящий индекст строк с днями недели
 
     // двумерный массив, хранящий индексы строк строк с расписанием для каждого дня недели
@@ -356,6 +358,7 @@ module.exports.parse = function parse(course, scheduleTable) {
 
             console.log("\n=================== ROW: %d ===================", rowIndex);
             const timeRow = getLessonsForRow(scheduleTable, rowIndex);
+            console.log('TIME : %s\n', timeRow.time.replace('\n', ''));
             connectLessonsGroups(groups, timeRow);
         }
     }
