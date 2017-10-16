@@ -4,11 +4,96 @@
 const shared = require('./prs_shared.js');
 
 const MAX_SUB_GROUPS_NUMB = 2;
-const X_VAR = 20; // миниматный процент от колСпана урока заходяций на группу необходимы для регистрации предмета группе
-const LEFT_COL_SPAN_PROCCENT = 35; // миниматный процент от колСпана урока для регистрации предмета группе
-const RIGHT_COL_SPAN_PROCCENT = 35; // миниматный процент от колСпана урока для регистрации предмета группе
+const MIN_REQUIRED_ROWSPAN_VALUE = 4; // минимальное значение атрибута rowspan при котором строка чситается новым днем в расписании
 
 module.exports.tag = TAG = 'fit';
+
+class DayRow {
+    constructor(rowIndex, text) {
+        this.rowIndex = rowIndex;
+        this.text = text;
+    }
+}
+
+function grabDaysIndexes(scheduleTable) {
+    let indexes = [];
+    scheduleTable.children('tr').each(function (index, elem) {
+        const table = scheduleTable.children(elem);
+        const rowspanAttr = parseInt(table.children().attr('rowspan'));
+        if (rowspanAttr >= MIN_REQUIRED_ROWSPAN_VALUE) {
+            const dayText = table.children().first().text();
+            const day = new DayRow(index, dayText);
+            indexes.push(day);
+            //console.log('Attr: %s on %d row: %s', rowspanAttr, indexes[indexes.length - 1].rowIndex, dayText);
+        }
+    });
+    return indexes;
+}
+
+function grabGreenRowsIndexes(scheduleTable, daysIndexes) {
+    const greenRowsToSkip = [];
+    let lastTakenDayIndex = 0;
+    scheduleTable.children('tr').each(function (index, elem) {
+        const table = scheduleTable.children(elem);
+        let colToCheck = 0;
+        for (let i = lastTakenDayIndex; i < daysIndexes.length; i++) {
+            if (daysIndexes[i].rowIndex === index) {
+                colToCheck = 1;
+                lastTakenDayIndex = i;
+                break;
+            }
+        }
+        let rowSpan = table.children('td').eq(colToCheck).attr('rowspan');
+        if (rowSpan !== undefined && rowSpan > 1) {
+            greenRowsToSkip.push(index + 1); // пропускаем следующую строку за зелёной
+            console.log('[%d] skpping: %d', index, index + 1);
+        }
+    });
+}
+
+function grabLessonsForDaysRowIndexes(scheduleTable, daysIndexes) {
+    let lessonIndex = [];
+    const dayLessonsRowIndexes = []; // двумерный массив, хранящий индексы строк с расписанием для каждого дня недели
+    let currentDayIndex = 0; // индекс элемента из массива daysIndexes
+    let skipNextRow = false; // для пропуска, следеющих за зелеными строками, строк
+    scheduleTable.children('tr').each(function (index, elem) {
+        if (index < daysIndexes[0].rowIndex) {
+            // пропускаем индексы до первого дня (т е строку с группами)
+            return;
+        }
+
+
+        if (currentDayIndex + 1 < daysIndexes.length && index === daysIndexes[currentDayIndex + 1].rowIndex) {
+            // если индекс переходит на новый день,
+            // создаем новый массив для запесе индексов строк для этого дня
+            currentDayIndex++;
+            //console.log('Save %s and push %d lessons', daysIndexes[currentDayIndex-1].text, lessonIndex.length);
+            dayLessonsRowIndexes.push(lessonIndex);
+            lessonIndex = [];
+        }
+
+        const table = scheduleTable.children(elem);
+
+        // определяет какой столбец проверять на rowspan (0 для строки без дня недели, 1 - там где есть день недели)
+        const colToCheck = index === daysIndexes[currentDayIndex].rowIndex ? 1 : 0;
+
+        if (skipNextRow) {
+            skipNextRow = false;
+        } else {
+            // сохраняем индекс строки
+            lessonIndex.push(index);
+            //console.log('[%d] reg: %d', index, index);
+        }
+
+        let rowSpan = table.children('td').eq(colToCheck).attr('rowspan');
+        if (rowSpan > 1) {
+            // текущая неделя белая, а следеющая зеленая - пропускаем её
+            skipNextRow = true;
+        }
+    });
+    dayLessonsRowIndexes.push(lessonIndex);
+    return dayLessonsRowIndexes;
+}
 
 function allowOverborders(sGroupColSpan, eGroupColSpan, sLessonColSpan, eLessonColSpan) {
     const requiredPresent = (100 / MAX_SUB_GROUPS_NUMB);
@@ -19,8 +104,8 @@ function allowOverborders(sGroupColSpan, eGroupColSpan, sLessonColSpan, eLessonC
     return lessonOverborders * 100 / groupColSpan >= requiredPresent;
 }
 
-function connectLessonsGroups3(groups, timeRow) {
-    for (let y = 0; y < 1 || (timeRow.hasGreen && y < 2); y++) {
+function connectLessonsGroups(groups, timeRow) {
+    for (let y = 0; y < 1 || (timeRow.hasGreen !== undefined && timeRow.hasGreen && y < 2); y++) {
         let lessonTaken = 0; // Количество взятых уроков
         let previewLessonsSum = 0; // Сумма взятых уроков
         let previewGroupSum = 0; // Суммы взятых групп
@@ -43,6 +128,10 @@ function connectLessonsGroups3(groups, timeRow) {
                     if (subGroupsNumb >= MAX_SUB_GROUPS_NUMB || leftGroupSpan <= 0) {
                         previewGroupSum += group.colSpan;
                         break;
+                    }
+
+                    if (lessonsRow[k] === undefined) {
+                        continue;
                     }
 
                     const lessonColSpan = lessonsRow[k].colSpan; // размер урока
@@ -123,11 +212,7 @@ function connectLessonsGroups3(groups, timeRow) {
                                 break;
                             }
                         }
-
-
                     }
-
-
                 }
             }
         );
@@ -135,31 +220,29 @@ function connectLessonsGroups3(groups, timeRow) {
 }
 
 function printRow(scheduleTable, groups, rowIndex) {
-    console.log("\n\n=================== ROW: %d ===================", rowIndex);
+    console.log("\n=================== ROW: %d ===================", rowIndex);
     const timeRow = shared.getScheduleForRow(scheduleTable, rowIndex);
-    connectLessonsGroups3(groups, timeRow);
+    connectLessonsGroups(groups, timeRow);
 
 }
+
 module.exports.parse = function parse(course, scheduleTable) {
     const groups = shared.getGroups(scheduleTable);
 
+    //printRow(scheduleTable, groups, 2);
 
-    printRow(scheduleTable, groups, 11);
+    const dayRowIndexes = grabDaysIndexes(scheduleTable); // массив объектов, хранящий индекст строк с днями недели
 
-    /*
-    const skipedRows = [3, 6, 8, 10, 13, 16, 18, 20, 24];
-    const lastRow = 10;
-    for (let rowIndex = 1; rowIndex <= lastRow; rowIndex++) {
-        for (let si = 0; si < skipedRows.length; si++) {
-            if (rowIndex === skipedRows[si]) {
-                rowIndex++;
-                break;
-            }
+    // двумерный массив, хранящий индексы строк с расписанием для каждого дня недели
+    const dayLessonsRowIndexes = grabLessonsForDaysRowIndexes(scheduleTable, dayRowIndexes);
+
+
+    for (let daysIndex = 0; daysIndex < dayLessonsRowIndexes.length; daysIndex++) {
+        console.log('\n DAY: %s', dayRowIndexes[daysIndex].text);
+        const lessonsIndexes = dayLessonsRowIndexes[daysIndex];
+        for (let lessonsIndex = 0; lessonsIndex < lessonsIndexes.length; lessonsIndex++) {
+            const rowIndex = lessonsIndexes[lessonsIndex];
+            printRow(scheduleTable, groups, rowIndex);
         }
-        if (rowIndex > lastRow) {
-            break;
-        }
-        printRow(scheduleTable, groups, rowIndex);
     }
-    */
 };

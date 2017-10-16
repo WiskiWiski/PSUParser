@@ -62,74 +62,88 @@ module.exports.getScheduleForRow = function parseScheduleRow(scheduleTable, rowN
     // rowN - строка для парсинга
     // возвращает структуру TimeRowSchedule
 
-    const result = TimeRowSchedule;
+    const result = new TimeRowSchedule;
 
-    let timeColumnN = 0; // номер колонки со временем [0...]
     let timeRow = scheduleTable.children('tr').eq(rowN);
-
-    let colSpan;
-    // расчёт позиции ячейки времени и проверка на наличее зелёной недели в строке
-    let rowSpan = parseInt(timeRow.children().first().attr('rowspan'));
-    if (!isNaN(rowSpan)) {
-        if (rowSpan > 2) {
-            // первая ячейка день недели
-            timeColumnN = 1;
-            rowSpan = parseInt(timeRow.children().eq(timeColumnN).attr('rowspan'));
-            if (!isNaN(rowSpan) && rowSpan > 1) {
-                // первая ячейка - время бело-зелёного дня
-                result.hasGreen = true;
-            }
-        } else if (rowSpan > 1) {
-            // первая ячейка - время бело-зелёного дня
-            result.hasGreen = true;
-        }
-    }
-
 
     // Цикл используется для обработки второй строки(для зелёных пар)
 
     const whiteCells = [];
     const greenCells = [];
 
+
     for (let i = 0; i < 1 || (result.hasGreen && i < 2); i++) {
         let processWhiteWeek = true;
-        if (i !== 0) {
-            timeColumnN = timeColumnN - 1;
+        let colsToSkip = 0; // кол-во колонок которые пропускаем
 
+        if (i !== 0) {
             // green week
+            //timeColumnN = timeColumnN - 1;
             processWhiteWeek = false;
+
         }
 
 
         timeRow.children('td').each(function (k, elem) {
-            if (k > timeColumnN) { // не сохраняем столбец "Часы" и/или день недели
-                // приводим индекс текущего столбца к нулю (т к не считаем столбец часов и/или деня недели)
-                k = k - timeColumnN - 1;
+            if (k < 3) {
+                // k<3 т к день недели или время не может быть дальше второго столбца (+1 для запаса)
 
-                const cell = new LessonCell();
-                cell.element = timeRow.children(elem);
-                cell.text = cell.element.text().trim().replace('\n', ' ');
+                // проверяем, не содержит ли текущий столбце день недели или время
+                const celRowSpan = parseInt(timeRow.first(elem).children('td').eq(k).attr('rowspan'));
+                const cellText = timeRow.children(elem).text().trim();
 
-                colSpan = parseInt(timeRow.children(elem).attr("colspan"));
-                if (isNaN(colSpan)) {
-                    colSpan = 1;
-                }
-                cell.colSpan = colSpan;
-
+                // проверка значения ячейки на содержание \n и (1-9 или . или , или пробела)
+                const isDateCol = cellText.indexOf('\n') !== -1 && /^[0-9., \n]+$/.test(cellText);
                 if (processWhiteWeek) {
-                    rowSpan = parseInt(timeRow.children(elem).attr("rowspan"));
-                    if (!isNaN(rowSpan) && rowSpan > 1) {
-                        const greenCell = new LessonCell(cell);
-                        greenCells[k] = greenCell;
-                        //console.log('add green cell k=%d, col=%d', k, greenCell.colSpan);
+                    // для белой недели
+                    if (celRowSpan > 2) {
+                        colsToSkip++;
+                        return;
+                    } else if (isDateCol) {
+                        if (celRowSpan === 2) {
+                            // если ячецка даты с rowspan = 2, то нужно обрабатывать зеленую неделю
+                            result.hasGreen = true;
+                        }
+                        colsToSkip++;
+                        return;
                     }
-
-                    whiteCells[k] = cell;
                 } else {
-                    let c;
-                    for (c = 0; greenCells[c] !== undefined; c++);
-                    greenCells[c] = cell;
+                    // для зелёной недели
+                    if (celRowSpan > 2 || isDateCol) {
+                        colsToSkip++;
+                        console.log('skiping k=%d text=%s', k, cellText);
+                        return;
+                    }
                 }
+            }
+
+            // приводим индекс текущего столбца к нулю (т к не считаем столбец часов и/или деня недели)
+            k = k - colsToSkip;
+
+            const cell = new LessonCell();
+            cell.element = timeRow.children(elem);
+            cell.text = cell.element.text().trim().replace('\n', ' ');
+
+            let colSpan = parseInt(timeRow.children(elem).attr("colspan"));
+            if (isNaN(colSpan)) {
+                colSpan = 1;
+            }
+            cell.colSpan = colSpan;
+
+            if (processWhiteWeek) {
+                const rowSpan = parseInt(timeRow.children(elem).attr("rowspan"));
+                if (!isNaN(rowSpan) && rowSpan > 1) {
+                    const greenCell = new LessonCell(cell);
+                    greenCells[k] = greenCell;
+                    //console.log('add green cell k=%d, col=%d', k, greenCell.colSpan);
+                }
+
+                whiteCells[k] = cell;
+            } else {
+                let c;
+                for (c = 0; greenCells[c] !== undefined; c++);
+                //console.log('find free at green c=%d', c);
+                greenCells[c] = cell;
             }
         });
 
