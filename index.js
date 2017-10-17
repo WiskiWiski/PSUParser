@@ -13,7 +13,7 @@ const port = 3000;
 
 
 const DEFAULT_FAC = 'fit';
-const DEFAULT_COURSE = 1;
+const DEFAULT_COURSE = 2;
 
 console.log('');
 main(DEFAULT_FAC, DEFAULT_COURSE);
@@ -21,7 +21,7 @@ console.log('');
 
 
 function main(fac, course) {
-    const file = fs.readFileSync('./table.html');
+    const file = fs.readFileSync('./fits/fit-2.html');
     const html = cheerio.load(file, {decodeEntities: false});
     const scheduleTable = html('table').eq(1).children('tbody');
 

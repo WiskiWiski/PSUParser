@@ -17,6 +17,5 @@ const DB_PATH = '/schedule/';
 
 
 module.exports.save = function saveJson(fac, course, json) {
-    console.log(json.toString());
     database.ref(DB_PATH + fac + '/' + course + '/').set(json);
 };

@@ -50,6 +50,7 @@ function getLessonsForRow(scheduleTable, rowN) {
     // возвращает структуру TimeRowSchedule
 
     const result = new shared.TimeRowSchedule;
+    let emptyRow = false;
 
     let timeRow = scheduleTable.children('tr').eq(rowN);
 
@@ -67,7 +68,6 @@ function getLessonsForRow(scheduleTable, rowN) {
             // green week
             //timeColumnN = timeColumnN - 1;
             processWhiteWeek = false;
-
         }
 
 
@@ -77,7 +77,7 @@ function getLessonsForRow(scheduleTable, rowN) {
 
                 // проверяем, не содержит ли текущий столбце день недели или время
                 const celRowSpan = parseInt(timeRow.first(elem).children('td').eq(k).attr('rowspan'));
-                const cellText = timeRow.children(elem).text().trim();
+                let cellText = timeRow.children(elem).text().trim();
 
                 // проверка значения ячейки на содержание \n и (1-9 или . или , или пробела)
                 const isDateCol = cellText.indexOf('\n') !== -1 && REG_EXPRESSION_FOR_DATE_CELL.test(cellText);
@@ -87,7 +87,7 @@ function getLessonsForRow(scheduleTable, rowN) {
                         colsToSkip++;
                         return;
                     } else if (isDateCol) {
-                        result.time = cellText;
+                        result.time = shared.clearForMultipleSpaces(cellText.replace('\n', ' '));
                         if (celRowSpan === 2) {
                             // если ячецка даты с rowspan = 2, то нужно обрабатывать зеленую неделю
                             result.hasGreen = true;
@@ -101,11 +101,16 @@ function getLessonsForRow(scheduleTable, rowN) {
                         colsToSkip++;
                         return;
                     } else if (isDateCol) {
-                        result.time = cellText;
+                        result.time = shared.clearForMultipleSpaces(cellText.replace('\n', ' '));
                         colsToSkip++;
                         return;
                     }
                 }
+            } else if (processWhiteWeek && k === 3 && colsToSkip === 0) {
+                // Если в первых трех ячейка нет времени и это строка с "белым" расписанием,
+                // то вся строка пустая (пропускаем)
+                emptyRow = true; // для выхода из цикла обработки белого/зелёного расписания
+                return;
             }
 
             // приводим индекс текущего столбца к нулю (т к не считаем столбец часов и/или деня недели)
@@ -113,7 +118,7 @@ function getLessonsForRow(scheduleTable, rowN) {
 
             const cell = new shared.LessonCell();
             cell.element = timeRow.children(elem);
-            cell.text = cell.element.text().trim().replace('\n', ' ');
+            cell.text = shared.clearForMultipleSpaces(cell.element.text()).trim().replace('\n', ' ');
 
             let colSpan = parseInt(timeRow.children(elem).attr("colspan"));
             if (isNaN(colSpan)) {
@@ -131,33 +136,74 @@ function getLessonsForRow(scheduleTable, rowN) {
 
                 whiteCells[k] = cell;
             } else {
-                let c;
-                for (c = 0; greenCells[c] !== undefined; c++);
-                //console.log('find free at green c=%d', c);
-                greenCells[c] = cell;
+                // Т. к. количество ячеек для белой и зелёной строк может отлиаться,
+                // необходимо учитывать эту разницу
+
+                let firstUndefinedIndex; // позиция первого undefined в greenCells массиве
+
+                // lastUndefinedIndex - хранит позицию последнего undefined
+                // в greenCells массиве от позикии первого - firstUndefinedIndex
+                // при этом сумма всех colSpan'ов ячеек в промежутке [firstUndefinedIndex..firstUndefinedIndex] меньше или равна
+                // colSpan ячейки, которую собираемся добавить в зелёную неделю
+                let lastUndefinedIndex;
+
+                // поиско позиции первого undefined
+                for (firstUndefinedIndex = 0; greenCells[firstUndefinedIndex] !== undefined; firstUndefinedIndex++) ;
+
+                // подсчёт lastUndefinedIndex
+                let whiteCellsSum = 0;
+                for (lastUndefinedIndex = firstUndefinedIndex; lastUndefinedIndex < whiteCells.length; lastUndefinedIndex++) {
+                    whiteCellsSum += whiteCells[lastUndefinedIndex].colSpan;
+                    if (whiteCellsSum >= cell.colSpan) {
+                        break;
+                    }
+                }
+
+                // Добавлении новой ячеёки в lastUndefinedIndex
+                // провежуток [firstUndefinedIndex..lastUndefinedIndex-1] заполняется null-ячейками,
+                // которые будут удалены при возврате результата
+                for (let r = firstUndefinedIndex; r <= lastUndefinedIndex; r++) {
+                    if (r === lastUndefinedIndex) {
+                        greenCells[r] = cell;
+                        //console.log('whrite cell at green c=%d', r);
+                    } else {
+                        greenCells[r] = null;
+                        //console.log('whrite null at green c=%d', r);
+                    }
+                }
             }
         });
 
+        if (emptyRow) {
+            // если эта строка была определенна как пустая
+            return;
+        }
 
         if (processWhiteWeek) {
             timeRow = scheduleTable.children('tr').eq(rowN + 1);
         }
     }
 
+    // переписываем ячейки из временного greenCells массива в результат без null-ячеек
+    for (let cellId = 0; cellId < greenCells.length; cellId++) {
+        let gCell = greenCells[cellId];
+        if (gCell !== null) {
+            result.greenCells.push(gCell);
+        }
+    }
+
     result.whiteCells = whiteCells;
-    result.greenCells = greenCells;
 
     /*
-     whiteCells.forEach(function (cell, i, arr) {
-     console.log('w[i:%d][col:%d]: ', i, cell.colSpan, cell.text);
+    whiteCells.forEach(function (cell, i, arr) {
+      console.log('w[i:%d][col:%d]: ', i, cell.colSpan, cell.text);
 
-     });
-     console.log('---------------');
-     greenCells.forEach(function (cell, i, arr) {
-     console.log('g[i:%d][col:%d]: ', i, cell.colSpan, cell.text);
-
-     });
-     */
+    });
+    console.log('---------------');
+    result.greenCells.forEach(function (cell, i, arr) {
+      console.log('g[i:%d][col:%d]: ', i, cell.colSpan, cell.text);
+    });
+    */
     return result;
 }
 
@@ -250,12 +296,32 @@ function saveToFinalJson(groupData, dayOfWeek, lessonTime, m, weekColor, groupNa
             start_time: times.start_time,
             end_time: times.end_time,
             cell_html: cell.element.html(),
-            lesson: shared.clearForMultipleSpaces(cell.text)
+            lesson: cell.text
         });
     }
 
     console.log('[%s][%s]: %s - %s', weekColor, m, groupName, cell.text);
     return groupData;
+}
+
+function subtractSubGroups(groupData) {
+    const res = [];
+    switch (groupData.length) {
+        case 0:
+            res[0] = null;
+            res[1] = null;
+            break;
+        case 1:
+            res[0] = groupData[0];
+            res[1] = groupData[0];
+            break;
+        case 2:
+            res[0] = groupData[0];
+            res[1] = groupData[1];
+            break;
+    }
+    return res;
+
 }
 
 function connectLessonsGroups(groups, timeRow, json, dayOfWeek) {
@@ -372,25 +438,17 @@ function connectLessonsGroups(groups, timeRow, json, dayOfWeek) {
                     }
                 }
 
-                //console.log('groupData = %d', groupData.length);
-                json[weekColor][group.name][1][dayOfWeek].push(groupData[0]);
+                const subgroups = subtractSubGroups(groupData);
+                let subGroupA = subgroups[0];
+                let subGroupB = subgroups[1];
 
-                if (groupData.length > 1) {
-                    // есть деление на подгруппы
-                    json[weekColor][group.name][2][dayOfWeek].push(groupData[1]);
-                } else {
-                    json[weekColor][group.name][2][dayOfWeek].push(groupData[0]);
-                }
+                json[weekColor][group.name][1][dayOfWeek].push(subGroupA);
+                json[weekColor][group.name][2][dayOfWeek].push(subGroupB);
 
                 // Если зелёной строки нет, то заполняем ей белой
                 if (!timeRow.hasGreen) {
-                    json[GREEN_WEEK_TITLE][group.name][1][dayOfWeek].push(groupData[0]);
-                    if (groupData.length > 1) {
-                        // есть деление на подгруппы
-                        json[GREEN_WEEK_TITLE][group.name][2][dayOfWeek].push(groupData[1]);
-                    } else {
-                        json[GREEN_WEEK_TITLE][group.name][2][dayOfWeek].push(groupData[0]);
-                    }
+                    json[GREEN_WEEK_TITLE][group.name][1][dayOfWeek].push(subGroupA);
+                    json[GREEN_WEEK_TITLE][group.name][2][dayOfWeek].push(subGroupB);
                 }
             }
         );
@@ -423,7 +481,7 @@ module.exports.parse = function parse(course, scheduleTable) {
 
     for (let daysIndex = 0; daysIndex < dayLessonsRowIndexes.length; daysIndex++) {
         //Цикл недели
-        console.log('\n DAY: %s', dayRowIndexes[daysIndex].text);
+        console.log('\n\x1b[42m        DAY: %s        \x1b[0m', dayRowIndexes[daysIndex].text);
 
         for (const groupName in finalJson.white) {
             //заполняем дни для зелёной недели
@@ -452,12 +510,18 @@ module.exports.parse = function parse(course, scheduleTable) {
             // цикл дня
             const rowIndex = lessonsIndexes[lessonsIndex];
 
-            console.log("\n=================== ROW: %d ===================", rowIndex);
             const timeRow = getLessonsForRow(scheduleTable, rowIndex);
-            console.log('TIME : %s\n', timeRow.time.replace('\n', ''));
-            finalJson = connectLessonsGroups(groups, timeRow, finalJson, dayRowIndexes[daysIndex].text);
-
+            if (timeRow !== undefined) {
+                console.log("\x1b[32m===========ROW: %d === TIME: %s ===========\x1b[0m", rowIndex, timeRow.time);
+                finalJson = connectLessonsGroups(groups, timeRow, finalJson, dayRowIndexes[daysIndex].text);
+            } else {
+                // строка с индексом rowIndex - пустая
+            }
+            console.log();
         }
     }
     database.save(FAC_TAG, course, finalJson);
 };
+
+
+// color console - https://stackoverflow.com/questions/9781218/how-to-change-node-jss-console-font-color
