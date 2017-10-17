@@ -29,7 +29,12 @@ module.exports.TimeRowSchedule = class TimeRowSchedule {
     constructor() {
         this.hasGreen = false;
         this.whiteCells = [];
-        this.greenСells = [];
+        this.greenCells = [];
         this.time = null;
     }
+};
+
+
+module.exports.clearForMultipleSpaces = function clearForMultipleSpaces(str) {
+    return str.replace(/  +/g, ' ');
 };

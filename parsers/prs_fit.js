@@ -2,13 +2,16 @@
  * Created by WiskiW on 13.10.2017.
  */
 const shared = require('./prs_shared.js');
+const database = require('../database.js');
 
+const GREEN_WEEK_TITLE = 'green';
+const WHITE_WEEK_TITLE = 'white';
 const MAX_SUB_GROUPS_NUMB = 2; // Максимальное количество подгрупп в группе
 const MIN_REQUIRED_ROWSPAN_VALUE = 4; // минимальное значение атрибута rowspan при котором строка чситается новым днем в расписании
 const REG_EXPRESSION_FOR_DATE_CELL = /^[0-9., \n]+$/;
 
 
-module.exports.tag = TAG = 'fit';
+module.exports.tag = FAC_TAG = 'fit';
 
 class DayRow {
     constructor(rowIndex, text) {
@@ -142,7 +145,7 @@ function getLessonsForRow(scheduleTable, rowN) {
     }
 
     result.whiteCells = whiteCells;
-    result.greenСells = greenCells;
+    result.greenCells = greenCells;
 
     /*
      whiteCells.forEach(function (cell, i, arr) {
@@ -226,27 +229,60 @@ function allowOverborders(sGroupColSpan, eGroupColSpan, sLessonColSpan, eLessonC
     return lessonOverborders * 100 / groupColSpan >= requiredPresent;
 }
 
-function connectLessonsGroups(groups, timeRow) {
+function parseTime(lessonTimeStr) {
+    const result = {start_time: '', end_time: ''};
+    const clnLessonTime = shared.clearForMultipleSpaces(lessonTimeStr);
+    const nIndex = clnLessonTime.indexOf('\n');
+    result.start_time = clnLessonTime.substring(0, nIndex).trim();
+    result.end_time = clnLessonTime.substring(nIndex, clnLessonTime.length).trim();
+    return result;
+}
+
+
+function saveToFinalJson(groupData, dayOfWeek, lessonTime, m, weekColor, groupName, cell) {
+    const times = parseTime(lessonTime);
+
+    const lesson = cell.text;
+    if (lesson === null || lesson === undefined || lesson.trim() === '') {
+        groupData.push(null);
+    } else {
+        groupData.push({
+            start_time: times.start_time,
+            end_time: times.end_time,
+            cell_html: cell.element.html(),
+            lesson: shared.clearForMultipleSpaces(cell.text)
+        });
+    }
+
+    console.log('[%s][%s]: %s - %s', weekColor, m, groupName, cell.text);
+    return groupData;
+}
+
+function connectLessonsGroups(groups, timeRow, json, dayOfWeek) {
     for (let y = 0; y < 1 || (timeRow.hasGreen !== undefined && timeRow.hasGreen && y < 2); y++) {
         let lessonTaken = 0; // Количество взятых уроков
         let previewLessonsSum = 0; // Сумма взятых уроков
         let previewGroupSum = 0; // Суммы взятых групп
 
-
+        const lessonTime = timeRow.time;
         let lessonsRow;
+        let weekColor;
         if (y === 0) {
             lessonsRow = timeRow.whiteCells;
+            weekColor = WHITE_WEEK_TITLE
         } else {
             console.log("----------------------------");
-            lessonsRow = timeRow.greenСells;
+            weekColor = GREEN_WEEK_TITLE;
+            lessonsRow = timeRow.greenCells;
         }
-
         groups.forEach(function (group, i, groupList) {
                 let subGroupsNumb = 0; // Количество подсчитанных подгупп
                 let leftGroupSpan = group.colSpan; // оставшееся место в данной группе
 
-                for (let k = lessonTaken; k < lessonsRow.length; k++) {
+                let groupData = [];
 
+
+                for (let k = lessonTaken; k < lessonsRow.length; k++) {
                     if (subGroupsNumb >= MAX_SUB_GROUPS_NUMB || leftGroupSpan <= 0) {
                         previewGroupSum += group.colSpan;
                         break;
@@ -264,14 +300,13 @@ function connectLessonsGroups(groups, timeRow) {
                     const eLessonColSpan = previewLessonsSum + lessonColSpan; // значение конца урока
                     //console.log('\nGroup:[%d - %d] Less:[%d - %d]', sGroupColSpan, eGroupColSpan, sLessonColSpan, eLessonColSpan);
 
-
                     if (sGroupColSpan === sLessonColSpan || eGroupColSpan === eLessonColSpan) {
                         if (sGroupColSpan === sLessonColSpan && eGroupColSpan === eLessonColSpan) {
                             // г
                             lessonTaken++;
                             previewLessonsSum += lessonColSpan;
                             previewGroupSum += group.colSpan;
-                            console.log('[г]:' + (y === 0 ? 'w' : 'g') + ' : ' + group.name + " - " + lessonsRow[k].text);
+                            groupData = saveToFinalJson(groupData, dayOfWeek, lessonTime, 'г', weekColor, group.name, lessonsRow[k]);
                             break;
                         } else if (sGroupColSpan === sLessonColSpan) {
                             if (eGroupColSpan > eLessonColSpan) {
@@ -280,11 +315,11 @@ function connectLessonsGroups(groups, timeRow) {
                                 previewLessonsSum += lessonColSpan;
                                 subGroupsNumb++;
                                 leftGroupSpan = leftGroupSpan - lessonColSpan;
-                                console.log('[д]:' + (y === 0 ? 'w' : 'g') + ' : ' + group.name + " - " + lessonsRow[k].text);
+                                groupData = saveToFinalJson(groupData, dayOfWeek, lessonTime, 'д', weekColor, group.name, lessonsRow[k]);
                             } else {
                                 // б1
                                 previewGroupSum += group.colSpan;
-                                console.log('[б1]:' + (y === 0 ? 'w' : 'g') + ' : ' + group.name + " - " + lessonsRow[k].text);
+                                groupData = saveToFinalJson(groupData, dayOfWeek, lessonTime, 'б1', weekColor, group.name, lessonsRow[k]);
                                 break;
                             }
                         } else if (eGroupColSpan === eLessonColSpan) {
@@ -293,14 +328,14 @@ function connectLessonsGroups(groups, timeRow) {
                                 lessonTaken++;
                                 previewLessonsSum += lessonColSpan;
                                 previewGroupSum += group.colSpan;
-                                console.log('[e]:' + (y === 0 ? 'w' : 'g') + ' : ' + group.name + " - " + lessonsRow[k].text);
+                                groupData = saveToFinalJson(groupData, dayOfWeek, lessonTime, 'е', weekColor, group.name, lessonsRow[k]);
                                 break;
                             } else {
                                 // а1
                                 lessonTaken++;
                                 previewLessonsSum += lessonColSpan;
                                 previewGroupSum += group.colSpan;
-                                console.log('[a1]:' + (y === 0 ? 'w' : 'g') + ' : ' + group.name + " - " + lessonsRow[k].text);
+                                groupData = saveToFinalJson(groupData, dayOfWeek, lessonTime, 'а1', weekColor, group.name, lessonsRow[k]);
                                 break;
                             }
                         }
@@ -308,7 +343,7 @@ function connectLessonsGroups(groups, timeRow) {
                         if (sGroupColSpan > sLessonColSpan && eGroupColSpan < eLessonColSpan) {
                             //в1
                             previewGroupSum += group.colSpan;
-                            console.log('[в1]:' + (y === 0 ? 'w' : 'g') + ' : ' + group.name + " - " + lessonsRow[k].text);
+                            groupData = saveToFinalJson(groupData, dayOfWeek, lessonTime, 'в1', weekColor, group.name, lessonsRow[k]);
                             break;
                         } else {
                             if (sGroupColSpan < sLessonColSpan && eLessonColSpan < eGroupColSpan) {
@@ -316,11 +351,11 @@ function connectLessonsGroups(groups, timeRow) {
                                 lessonTaken++;
                                 previewLessonsSum += lessonColSpan;
                                 leftGroupSpan -= lessonColSpan;
-                                console.log('[в]:' + (y === 0 ? 'w' : 'g') + ' : ' + group.name + " - " + lessonsRow[k].text);
+                                groupData = saveToFinalJson(groupData, dayOfWeek, lessonTime, 'в', weekColor, group.name, lessonsRow[k]);
                             } else if (eGroupColSpan > eLessonColSpan) {
                                 // а
                                 if (allowOverborders(sGroupColSpan, eGroupColSpan, sLessonColSpan, eLessonColSpan)) {
-                                    console.log('[a]:' + (y === 0 ? 'w' : 'g') + ' : ' + group.name + " - " + lessonsRow[k].text);
+                                    groupData = saveToFinalJson(groupData, dayOfWeek, lessonTime, 'а', weekColor, group.name, lessonsRow[k]);
                                 }
                                 lessonTaken++;
                                 previewLessonsSum += lessonColSpan;
@@ -328,7 +363,7 @@ function connectLessonsGroups(groups, timeRow) {
                             } else {
                                 // б
                                 if (allowOverborders(sGroupColSpan, eGroupColSpan, sLessonColSpan, eLessonColSpan)) {
-                                    console.log('[б]:' + (y === 0 ? 'w' : 'g') + ' : ' + group.name + " - " + lessonsRow[k].text);
+                                    groupData = saveToFinalJson(groupData, dayOfWeek, lessonTime, 'б', weekColor, group.name, lessonsRow[k]);
                                 }
                                 previewGroupSum += group.colSpan;
                                 break;
@@ -336,13 +371,49 @@ function connectLessonsGroups(groups, timeRow) {
                         }
                     }
                 }
+
+                //console.log('groupData = %d', groupData.length);
+                json[weekColor][group.name][1][dayOfWeek].push(groupData[0]);
+
+                if (groupData.length > 1) {
+                    // есть деление на подгруппы
+                    json[weekColor][group.name][2][dayOfWeek].push(groupData[1]);
+                } else {
+                    json[weekColor][group.name][2][dayOfWeek].push(groupData[0]);
+                }
+
+                // Если зелёной строки нет, то заполняем ей белой
+                if (!timeRow.hasGreen) {
+                    json[GREEN_WEEK_TITLE][group.name][1][dayOfWeek].push(groupData[0]);
+                    if (groupData.length > 1) {
+                        // есть деление на подгруппы
+                        json[GREEN_WEEK_TITLE][group.name][2][dayOfWeek].push(groupData[1]);
+                    } else {
+                        json[GREEN_WEEK_TITLE][group.name][2][dayOfWeek].push(groupData[0]);
+                    }
+                }
             }
         );
     }
+    return json;
 }
 
 module.exports.parse = function parse(course, scheduleTable) {
     const groups = parseGroupsRow(scheduleTable); // массив с группами и их весами
+
+    let finalJson = {};
+    finalJson[GREEN_WEEK_TITLE] = {};
+    finalJson[WHITE_WEEK_TITLE] = {};
+    groups.forEach(function (group) {
+        finalJson.green[group.name] = {
+            1: [],
+            2: []
+        };
+        finalJson.white[group.name] = {
+            1: [],
+            2: []
+        };
+    });
 
     const dayRowIndexes = grabDaysIndexes(scheduleTable); // массив объектов, хранящий индекст строк с днями недели
 
@@ -351,15 +422,42 @@ module.exports.parse = function parse(course, scheduleTable) {
 
 
     for (let daysIndex = 0; daysIndex < dayLessonsRowIndexes.length; daysIndex++) {
+        //Цикл недели
         console.log('\n DAY: %s', dayRowIndexes[daysIndex].text);
+
+        for (const groupName in finalJson.white) {
+            //заполняем дни для зелёной недели
+            finalJson.green[groupName][1][dayRowIndexes[daysIndex].text] = [];
+            finalJson.green[groupName][2][dayRowIndexes[daysIndex].text] = [];
+
+            //компенсируем индекс первой пары для зелёной недели
+            finalJson.green[groupName][2][dayRowIndexes[daysIndex].text].push([]);
+            finalJson.green[groupName][1][dayRowIndexes[daysIndex].text].push([]);
+
+
+            //заполняем дни для белой недели
+            finalJson.white[groupName][1][dayRowIndexes[daysIndex].text] = [];
+            finalJson.white[groupName][2][dayRowIndexes[daysIndex].text] = [];
+
+            //компенсируем индекс первой пары для белой недели
+            finalJson.white[groupName][1][dayRowIndexes[daysIndex].text].push([]);
+            finalJson.white[groupName][2][dayRowIndexes[daysIndex].text].push([]);
+        }
+
+
         const lessonsIndexes = dayLessonsRowIndexes[daysIndex];
+
+
         for (let lessonsIndex = 0; lessonsIndex < lessonsIndexes.length; lessonsIndex++) {
+            // цикл дня
             const rowIndex = lessonsIndexes[lessonsIndex];
 
             console.log("\n=================== ROW: %d ===================", rowIndex);
             const timeRow = getLessonsForRow(scheduleTable, rowIndex);
             console.log('TIME : %s\n', timeRow.time.replace('\n', ''));
-            connectLessonsGroups(groups, timeRow);
+            finalJson = connectLessonsGroups(groups, timeRow, finalJson, dayRowIndexes[daysIndex].text);
+
         }
     }
+    database.save(FAC_TAG, course, finalJson);
 };
