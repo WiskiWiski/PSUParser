@@ -13,6 +13,8 @@ const config = {
 firebase.initializeApp(config);
 const database = firebase.database();
 
+// /firebase.database.enableLogging(true);
+
 const DB_PATH = '/schedule/';
 
 

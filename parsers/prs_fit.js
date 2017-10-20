@@ -10,6 +10,10 @@ const MAX_SUB_GROUPS_NUMB = 2; // Максимальное количество 
 const MIN_REQUIRED_ROWSPAN_VALUE = 4; // минимальное значение атрибута rowspan при котором строка чситается новым днем в расписании
 const REG_EXPRESSION_FOR_DATE_CELL = /^[0-9., \n]+$/;
 
+const ROW_TYPE_NONE = 'none';
+const ROW_TYPE_TIME_ROW = 'time_row';
+const ROW_TYPE_GROUP_ROW = 'group_row';
+const ROW_TYPE_EMPTY_ROW = 'empty_row';
 
 module.exports.tag = FAC_TAG = 'fit';
 
@@ -20,191 +24,353 @@ class DayRow {
     }
 }
 
-function parseGroupsRow(scheduleTable) {
+function getGroups(scheduleTable) {
     // получает список групп для расписания
-    // возвращает массив
+    // возвращает массив с группами и их весами
 
-    let groupsRow = scheduleTable.children('tr').first();
-    let group;
-    const groups = [];
-    groupsRow.children('td').each(function (k, elem) {
-        if (k > 1) { // не сохраняем столбец "Часы" и день недели
-            k = k - 2;
-            group = new shared.Group();
-            group.name = groupsRow.children(elem).text().trim();
+    function detectGroupsRowIndex(scheduleTable) {
+        // Возвращает индекст строки из таблици, в которой находятся группы
 
-            group.colSpan = parseInt(groupsRow.children(elem).attr("colspan"));
-            if (isNaN(group.colSpan)) {
-                group.colSpan = 1;
+        const rowCount = scheduleTable.children('tr').length;
+        for (let k = 0; k < 6 && k < rowCount; k++) {
+            // Крайне маловероятно, что строка с группами будет ниже 6-ого ряда
+            if (getRowInfo(scheduleTable, k).type === ROW_TYPE_GROUP_ROW) {
+                return k
             }
-            groups[k] = group;
-
-            //console.log("k:" + k + " - " + groups[k]);
         }
-    });
+        return -1;
+    }
+
+
+    let groups = [];
+
+    const groupsRowIndex = detectGroupsRowIndex(scheduleTable);
+    if (groupsRowIndex !== -1) {
+        const groupsSubRows = getSubRows(scheduleTable, groupsRowIndex);
+        groups = groupsSubRows.bRow;
+        groups.forEach(function (el) {
+            console.log('groups: ' + el.text);
+        });
+    } else {
+        // TODO : Groups not found!
+    }
     return groups;
 }
 
-function getLessonsForRow(scheduleTable, rowN) {
-    // rowN - строка для парсинга
-    // возвращает структуру TimeRowSchedule
+function getRowInfo(scheduleTable, aRowIndex) {
+    /*
+        Поиск информации о строка подстроках в таблице расписания по индексу А-строки - aRowIndex
+        Возвращает структуру типа result (см. ниже)
+     */
 
-    const result = new shared.TimeRowSchedule;
-    let emptyRow = false;
+    const SUBROW_A = 'a';
+    const SUBROW_B = 'b';
 
-    let timeRow = scheduleTable.children('tr').eq(rowN);
+    let result = {
+        day: null,
+        has_b_row: false,
+        type: ROW_TYPE_NONE,
+        time: null,
+        row_a: {
+            skip_colons_n: 0,
+            errors: null
 
-    // Цикл используется для обработки второй строки(для зелёных пар)
+        },
+        row_b: {
+            skip_colons_n: 0,
+            errors: null
+        },
+    };
 
-    const whiteCells = [];
-    const greenCells = [];
+    let hasGreen = false;
+    let timeRow = scheduleTable.children('tr').eq(aRowIndex);
 
+    let subRow;
+    let row;
 
-    for (let i = 0; i < 1 || (result.hasGreen && i < 2); i++) {
-        let processWhiteWeek = true;
-        let colsToSkip = 0; // кол-во колонок которые пропускаем
+    for (let i = 0; i < 1 || (hasGreen && i < 2); i++) {
+        timeRow = scheduleTable.children('tr').eq(aRowIndex + i);
+        if (i === 0) {
+            subRow = SUBROW_A;
+            row = result.row_a;
+        } else {
+            subRow = SUBROW_B;
+            row = result.row_b;
 
-        if (i !== 0) {
-            // green week
-            //timeColumnN = timeColumnN - 1;
-            processWhiteWeek = false;
         }
+        let skipColonsN = 0;
 
 
+        let forEachIsFinished = false;
         timeRow.children('td').each(function (k, elem) {
-            if (k < 3) {
-                // k<3 т к день недели или время не может быть дальше второго столбца (+1 для запаса)
-
-                // проверяем, не содержит ли текущий столбце день недели или время
-                const celRowSpan = parseInt(timeRow.first(elem).children('td').eq(k).attr('rowspan'));
-                let cellText = timeRow.children(elem).text().trim();
-
-                // проверка значения ячейки на содержание \n и (1-9 или . или , или пробела)
-                const isDateCol = cellText.indexOf('\n') !== -1 && REG_EXPRESSION_FOR_DATE_CELL.test(cellText);
-                if (processWhiteWeek) {
-                    // для белой недели
-                    if (celRowSpan > 2) {
-                        colsToSkip++;
-                        return;
-                    } else if (isDateCol) {
-                        result.time = shared.clearForMultipleSpaces(cellText.replace('\n', ' '));
-                        if (celRowSpan === 2) {
-                            // если ячецка даты с rowspan = 2, то нужно обрабатывать зеленую неделю
-                            result.hasGreen = true;
-                        }
-                        colsToSkip++;
-                        return;
-                    }
-                } else {
-                    // для зелёной недели
-                    if (celRowSpan > 2) {
-                        colsToSkip++;
-                        return;
-                    } else if (isDateCol) {
-                        result.time = shared.clearForMultipleSpaces(cellText.replace('\n', ' '));
-                        colsToSkip++;
-                        return;
-                    }
-                }
-            } else if (processWhiteWeek && k === 3 && colsToSkip === 0) {
-                // Если в первых трех ячейка нет времени и это строка с "белым" расписанием,
-                // то вся строка пустая (пропускаем)
-                emptyRow = true; // для выхода из цикла обработки белого/зелёного расписания
+            if (forEachIsFinished) {
                 return;
             }
 
-            // приводим индекс текущего столбца к нулю (т к не считаем столбец часов и/или деня недели)
-            k = k - colsToSkip;
 
-            const cell = new shared.LessonCell();
-            cell.element = timeRow.children(elem);
-            cell.text = shared.clearForMultipleSpaces(cell.element.text()).trim().replace('\n', ' ');
+            // проверяем, не содержит ли текущий столбце день недели или время
+            const celRowSpan = parseInt(timeRow.children(elem).first('td').attr('rowspan'));
+            const cellText = shared.clearForMultipleSpaces(timeRow.children(elem).text().trim());
 
-            let colSpan = parseInt(timeRow.children(elem).attr("colspan"));
-            if (isNaN(colSpan)) {
-                colSpan = 1;
-            }
-            cell.colSpan = colSpan;
+            const isClockCell = cellText.toLowerCase().indexOf('часы') !== -1;
+            if (isClockCell) {
+                // Если строка с группами
 
-            if (processWhiteWeek) {
-                const rowSpan = parseInt(timeRow.children(elem).attr("rowspan"));
-                if (!isNaN(rowSpan) && rowSpan > 1) {
-                    const greenCell = new shared.LessonCell(cell);
-                    greenCells[k] = greenCell;
-                    //console.log('add green cell k=%d, col=%d', k, greenCell.colSpan);
+                forEachIsFinished = true;
+                result.type = ROW_TYPE_GROUP_ROW;
+                skipColonsN++;
+                if (celRowSpan === 2) {
+                    hasGreen = true;
+                    result.has_b_row = true;
                 }
 
-                whiteCells[k] = cell;
             } else {
-                // Т. к. количество ячеек для белой и зелёной строк может отлиаться,
-                // необходимо учитывать эту разницу
+                // Если любая другая строка
 
-                let firstUndefinedIndex; // позиция первого undefined в greenCells массиве
-
-                // lastUndefinedIndex - хранит позицию последнего undefined
-                // в greenCells массиве от позикии первого - firstUndefinedIndex
-                // при этом сумма всех colSpan'ов ячеек в промежутке [firstUndefinedIndex..firstUndefinedIndex] меньше или равна
-                // colSpan ячейки, которую собираемся добавить в зелёную неделю
-                let lastUndefinedIndex;
-
-                // поиско позиции первого undefined
-                for (firstUndefinedIndex = 0; greenCells[firstUndefinedIndex] !== undefined; firstUndefinedIndex++) ;
-
-                // подсчёт lastUndefinedIndex
-                let whiteCellsSum = 0;
-                for (lastUndefinedIndex = firstUndefinedIndex; lastUndefinedIndex < whiteCells.length; lastUndefinedIndex++) {
-                    whiteCellsSum += whiteCells[lastUndefinedIndex].colSpan;
-                    if (whiteCellsSum >= cell.colSpan) {
-                        break;
+                if (subRow === SUBROW_A) {
+                    // Подстрока А
+                    if (celRowSpan > 2) {
+                        // ячека с днём недели
+                        skipColonsN++;
+                        result.day = cellText;
+                        return;
                     }
+
+                    // проверка значения ячейки на содержание \n и (1-9 или . или , или пробела)
+                    const isTimeCol = cellText.indexOf('\n') !== -1 && REG_EXPRESSION_FOR_DATE_CELL.test(cellText);
+                    if (isTimeCol) {
+                        // ячейка со временем
+                        result.type = ROW_TYPE_TIME_ROW;
+                        skipColonsN++;
+                        result.time = cellText.replace('\n', ' ');
+
+                        if (celRowSpan === 2) {
+                            hasGreen = true;
+                            result.has_b_row = true;
+                        }
+                        // forEachIsFinished=true для переходя на следующую подстроку, т.к. после неё точно будет расписание
+                        forEachIsFinished = true;
+                        return;
+                    }
+
+                } else {
+                    // Подстрока B
+
                 }
 
-                // Добавлении новой ячеёки в lastUndefinedIndex
-                // провежуток [firstUndefinedIndex..lastUndefinedIndex-1] заполняется null-ячейками,
-                // которые будут удалены при возврате результата
-                for (let r = firstUndefinedIndex; r <= lastUndefinedIndex; r++) {
-                    if (r === lastUndefinedIndex) {
-                        greenCells[r] = cell;
-                        //console.log('whrite cell at green c=%d', r);
-                    } else {
-                        greenCells[r] = null;
-                        //console.log('whrite null at green c=%d', r);
-                    }
+                if (result.type === ROW_TYPE_NONE && cellText === '') {
+                    // если еще не определили какого типа строка и ячейка пустая - прибовляем индекс для пропуска ячейки
+
+                    skipColonsN++;
                 }
+
             }
         });
 
-        if (emptyRow) {
-            // если эта строка была определенна как пустая
-            return;
+        if (result.type === ROW_TYPE_NONE) {
+            // если после обработки строка А, тип остался неизвестен - строка пустая
+            result.type = ROW_TYPE_EMPTY_ROW;
+            return result;
         }
+        row.skip_colons_n = skipColonsN;
+    }
+    return result;
+}
 
-        if (processWhiteWeek) {
-            timeRow = scheduleTable.children('tr').eq(rowN + 1);
-        }
+function buildCleanBRow(timeRowSch, rowA, rowB1, rowB2) {
+    /*
+        Метод сбора второстепенной строки расписани
+        Принимает главную строку из расписания (rowA)
+        и две второстепенные:
+            rowB1 - образованная от ячеек из rowA с rowSpan=2
+            rowB2 - образованная ячейками строки за rowA
+        Построенную второстепенную строку записывает в объект SubRows - timeRowSch
+     */
+
+    function printResA(res) {
+
+        console.log('===========ARR================');
+        res.forEach(function (item) {
+            console.log('Itm: [col=%d] \'%s\'', item.colSpan, item.text);
+        });
+
     }
 
-    // переписываем ячейки из временного greenCells массива в результат без null-ячеек
-    for (let cellId = 0; cellId < greenCells.length; cellId++) {
-        let gCell = greenCells[cellId];
-        if (gCell !== null) {
-            result.greenCells.push(gCell);
-        }
-    }
+    function printResB(res) {
 
-    result.whiteCells = whiteCells;
+        console.log('===========ARR================');
+        res.forEach(function (item) {
+            console.log('Itm: [index=%d] [col=%d] \'%s\'', item.index, item.cell.colSpan, item.cell.text);
+        });
+
+    }
 
     /*
-    whiteCells.forEach(function (cell, i, arr) {
-      console.log('w[i:%d][col:%d]: ', i, cell.colSpan, cell.text);
+    console.log('rowA: ');
+    printResA(rowA);
+    console.log('\nrowB1: ');
+    printResB(rowB1);
+    console.log('\nrowB2: ');
+    printResB(rowB2);
+*/
 
-    });
-    console.log('---------------');
-    result.greenCells.forEach(function (cell, i, arr) {
-      console.log('g[i:%d][col:%d]: ', i, cell.colSpan, cell.text);
-    });
-    */
-    return result;
+    const cleanARowCount = rowA.length - rowB1.length;
+    if (cleanARowCount === rowB2.length) {
+        // Случай - simple
+        //console.log('\nSIMPLE-Type\n');
+        let takeFromB2Count = 0;
+        let item;
+        for (let index = 0; index < rowB1.length; index++) {
+            item = rowB1[index];
+            if (item.index === index + takeFromB2Count) {
+                timeRowSch.bRow.push(item.cell);
+            } else {
+                takeFromB2Count++;
+                index--;
+                if (rowB2.length > 0) {
+                    timeRowSch.bRow.push(rowB2.splice(0, 1)[0].cell);
+                }
+            }
+        }
+
+    } else if (cleanARowCount > rowB2.length) {
+        // Случай - A
+        //console.log('\nA-Type\n');
+        let aItemIndex = 0;
+        rowB2.forEach(function (item) {
+            let aItemSum = 0;
+            if (rowB1.length > 0 && aItemIndex === rowB1[0].index) {
+                timeRowSch.bRow.push(rowB1.splice(0, 1)[0].cell);
+                aItemIndex++;
+            } else {
+                while (aItemIndex < rowA.length) {
+                    const aItem = rowA[aItemIndex];
+                    aItemIndex++;
+                    aItemSum += aItem.colSpan;
+                    if (aItemSum >= item.cell.colSpan) {
+                        break;
+                    }
+                }
+            }
+            timeRowSch.bRow.push(item.cell);
+
+        });
+    } else if (cleanARowCount < rowB2.length) {
+        // Случай - B
+        //console.log('\nB-Type\n');
+
+        let b2ItemIndex = 0;
+        rowA.forEach(function (item, index) {
+            let b2ItemSum = 0;
+            if (rowB1.length > 0 && index === rowB1[0].index) {
+                rowB1.splice(0, 1);
+                timeRowSch.bRow.push(item);
+            } else {
+                while (b2ItemIndex < rowB2.length) {
+                    const b2Item = rowB2[b2ItemIndex];
+                    b2ItemIndex++;
+                    b2ItemSum += b2Item.colSpan;
+                    timeRowSch.bRow.push(b2Item.cell);
+                    if (b2ItemSum >= item.colSpan) {
+                        break;
+                    }
+                }
+            }
+
+        });
+    }
+
+    //printResA(timeRowSch.bRow);
+}
+
+function getSubRows(scheduleTable, aRowIndex) {
+    // rowN - строка для парсинга
+    // возвращает объект SubRows
+
+    const result = new shared.SubRows;
+    let timeRow = scheduleTable.children('tr').eq(aRowIndex);
+
+    const rowsInfo = getRowInfo(scheduleTable, aRowIndex);
+
+    switch (rowsInfo.type) {
+        case ROW_TYPE_NONE:
+        case ROW_TYPE_EMPTY_ROW:
+            // Пустая строка
+            return;
+            break;
+        case ROW_TYPE_GROUP_ROW:
+        case ROW_TYPE_TIME_ROW:
+            result.time = rowsInfo.time;
+
+            let rowA = [];
+            let rowB1 = [];
+            let rowB2 = [];
+            let row;
+
+            // Цикл для обработки первичной и вторичной строки
+            for (let i = 0; i < 1 || (rowsInfo.has_b_row && i < 2); i++) {
+                if (i === 0) {
+                    row = rowsInfo.row_a;
+                    timeRow = scheduleTable.children('tr').eq(aRowIndex);
+                } else {
+                    row = rowsInfo.row_b;
+                    timeRow = scheduleTable.children('tr').eq(aRowIndex + 1);
+                }
+                const processRowA = i === 0;
+
+
+                timeRow.children('td').each(function (k, elem) {
+                    // пропускаем ячейки и компенсируем индекс
+                    if (k < row.skip_colons_n) {
+                        return;
+                    } else {
+                        k = k - row.skip_colons_n;
+                    }
+
+                    const cell = new shared.TableCell();
+                    cell.element = timeRow.children(elem);
+                    cell.text = shared.clearForMultipleSpaces(cell.element.text()).trim().replace('\n', ' ');
+
+                    let colSpan = parseInt(timeRow.children(elem).attr("colspan"));
+                    if (isNaN(colSpan)) {
+                        colSpan = 1;
+                    }
+                    cell.colSpan = colSpan;
+
+                    if (processRowA) {
+                        // Обработка строки А
+                        rowA.push(cell);
+
+                        const rowSpan = parseInt(timeRow.children(elem).attr("rowspan"));
+                        if (!isNaN(rowSpan) && rowSpan > 1) {
+                            // Если ячейка строки А занимает строку B (rowspan = 2) заполняем B1
+                            const greenCell = new shared.TableCell(cell);
+                            rowB1.push({
+                                cell: greenCell,
+                                index: k
+                            });
+                        }
+
+                    } else {
+                        // Обработка строки B2
+                        rowB2.push({
+                            cell: cell,
+                            index: k
+                        });
+                    }
+                });
+            }
+            result.aRow = rowA; // сохраняем строку А
+
+            if (rowsInfo.has_b_row) {
+                result.hasBRow = true;
+                buildCleanBRow(result, rowA, rowB1, rowB2); // строим строку Б
+            } else {
+                result.bRow = rowA; // сохраняем строку А как B
+            }
+            return result;
+            break;
+    }
 }
 
 function grabDaysIndexes(scheduleTable) {
@@ -284,7 +450,6 @@ function parseTime(lessonTimeStr) {
     return result;
 }
 
-
 function saveToFinalJson(groupData, dayOfWeek, lessonTime, m, weekColor, groupName, cell) {
     const times = parseTime(lessonTime);
 
@@ -325,7 +490,7 @@ function subtractSubGroups(groupData) {
 }
 
 function connectLessonsGroups(groups, timeRow, json, dayOfWeek) {
-    for (let y = 0; y < 1 || (timeRow.hasGreen !== undefined && timeRow.hasGreen && y < 2); y++) {
+    for (let y = 0; y < 1 || (timeRow.hasBRow !== undefined && timeRow.hasBRow && y < 2); y++) {
         let lessonTaken = 0; // Количество взятых уроков
         let previewLessonsSum = 0; // Сумма взятых уроков
         let previewGroupSum = 0; // Суммы взятых групп
@@ -334,12 +499,12 @@ function connectLessonsGroups(groups, timeRow, json, dayOfWeek) {
         let lessonsRow;
         let weekColor;
         if (y === 0) {
-            lessonsRow = timeRow.whiteCells;
+            lessonsRow = timeRow.aRow;
             weekColor = WHITE_WEEK_TITLE
         } else {
             console.log("----------------------------");
             weekColor = GREEN_WEEK_TITLE;
-            lessonsRow = timeRow.greenCells;
+            lessonsRow = timeRow.bRow;
         }
         groups.forEach(function (group, i, groupList) {
                 let subGroupsNumb = 0; // Количество подсчитанных подгупп
@@ -372,7 +537,7 @@ function connectLessonsGroups(groups, timeRow, json, dayOfWeek) {
                             lessonTaken++;
                             previewLessonsSum += lessonColSpan;
                             previewGroupSum += group.colSpan;
-                            groupData = saveToFinalJson(groupData, dayOfWeek, lessonTime, 'г', weekColor, group.name, lessonsRow[k]);
+                            groupData = saveToFinalJson(groupData, dayOfWeek, lessonTime, 'г', weekColor, group.text, lessonsRow[k]);
                             break;
                         } else if (sGroupColSpan === sLessonColSpan) {
                             if (eGroupColSpan > eLessonColSpan) {
@@ -381,11 +546,11 @@ function connectLessonsGroups(groups, timeRow, json, dayOfWeek) {
                                 previewLessonsSum += lessonColSpan;
                                 subGroupsNumb++;
                                 leftGroupSpan = leftGroupSpan - lessonColSpan;
-                                groupData = saveToFinalJson(groupData, dayOfWeek, lessonTime, 'д', weekColor, group.name, lessonsRow[k]);
+                                groupData = saveToFinalJson(groupData, dayOfWeek, lessonTime, 'д', weekColor, group.text, lessonsRow[k]);
                             } else {
                                 // б1
                                 previewGroupSum += group.colSpan;
-                                groupData = saveToFinalJson(groupData, dayOfWeek, lessonTime, 'б1', weekColor, group.name, lessonsRow[k]);
+                                groupData = saveToFinalJson(groupData, dayOfWeek, lessonTime, 'б1', weekColor, group.text, lessonsRow[k]);
                                 break;
                             }
                         } else if (eGroupColSpan === eLessonColSpan) {
@@ -394,14 +559,14 @@ function connectLessonsGroups(groups, timeRow, json, dayOfWeek) {
                                 lessonTaken++;
                                 previewLessonsSum += lessonColSpan;
                                 previewGroupSum += group.colSpan;
-                                groupData = saveToFinalJson(groupData, dayOfWeek, lessonTime, 'е', weekColor, group.name, lessonsRow[k]);
+                                groupData = saveToFinalJson(groupData, dayOfWeek, lessonTime, 'е', weekColor, group.text, lessonsRow[k]);
                                 break;
                             } else {
                                 // а1
                                 lessonTaken++;
                                 previewLessonsSum += lessonColSpan;
                                 previewGroupSum += group.colSpan;
-                                groupData = saveToFinalJson(groupData, dayOfWeek, lessonTime, 'а1', weekColor, group.name, lessonsRow[k]);
+                                groupData = saveToFinalJson(groupData, dayOfWeek, lessonTime, 'а1', weekColor, group.text, lessonsRow[k]);
                                 break;
                             }
                         }
@@ -409,7 +574,7 @@ function connectLessonsGroups(groups, timeRow, json, dayOfWeek) {
                         if (sGroupColSpan > sLessonColSpan && eGroupColSpan < eLessonColSpan) {
                             //в1
                             previewGroupSum += group.colSpan;
-                            groupData = saveToFinalJson(groupData, dayOfWeek, lessonTime, 'в1', weekColor, group.name, lessonsRow[k]);
+                            groupData = saveToFinalJson(groupData, dayOfWeek, lessonTime, 'в1', weekColor, group.text, lessonsRow[k]);
                             break;
                         } else {
                             if (sGroupColSpan < sLessonColSpan && eLessonColSpan < eGroupColSpan) {
@@ -417,11 +582,11 @@ function connectLessonsGroups(groups, timeRow, json, dayOfWeek) {
                                 lessonTaken++;
                                 previewLessonsSum += lessonColSpan;
                                 leftGroupSpan -= lessonColSpan;
-                                groupData = saveToFinalJson(groupData, dayOfWeek, lessonTime, 'в', weekColor, group.name, lessonsRow[k]);
+                                groupData = saveToFinalJson(groupData, dayOfWeek, lessonTime, 'в', weekColor, group.text, lessonsRow[k]);
                             } else if (eGroupColSpan > eLessonColSpan) {
                                 // а
                                 if (allowOverborders(sGroupColSpan, eGroupColSpan, sLessonColSpan, eLessonColSpan)) {
-                                    groupData = saveToFinalJson(groupData, dayOfWeek, lessonTime, 'а', weekColor, group.name, lessonsRow[k]);
+                                    groupData = saveToFinalJson(groupData, dayOfWeek, lessonTime, 'а', weekColor, group.text, lessonsRow[k]);
                                 }
                                 lessonTaken++;
                                 previewLessonsSum += lessonColSpan;
@@ -429,7 +594,7 @@ function connectLessonsGroups(groups, timeRow, json, dayOfWeek) {
                             } else {
                                 // б
                                 if (allowOverborders(sGroupColSpan, eGroupColSpan, sLessonColSpan, eLessonColSpan)) {
-                                    groupData = saveToFinalJson(groupData, dayOfWeek, lessonTime, 'б', weekColor, group.name, lessonsRow[k]);
+                                    groupData = saveToFinalJson(groupData, dayOfWeek, lessonTime, 'б', weekColor, group.text, lessonsRow[k]);
                                 }
                                 previewGroupSum += group.colSpan;
                                 break;
@@ -442,13 +607,13 @@ function connectLessonsGroups(groups, timeRow, json, dayOfWeek) {
                 let subGroupA = subgroups[0];
                 let subGroupB = subgroups[1];
 
-                json[weekColor][group.name][1][dayOfWeek].push(subGroupA);
-                json[weekColor][group.name][2][dayOfWeek].push(subGroupB);
+                json[weekColor][group.text][1][dayOfWeek].push(subGroupA);
+                json[weekColor][group.text][2][dayOfWeek].push(subGroupB);
 
                 // Если зелёной строки нет, то заполняем ей белой
-                if (!timeRow.hasGreen) {
-                    json[GREEN_WEEK_TITLE][group.name][1][dayOfWeek].push(subGroupA);
-                    json[GREEN_WEEK_TITLE][group.name][2][dayOfWeek].push(subGroupB);
+                if (!timeRow.hasBRow) {
+                    json[GREEN_WEEK_TITLE][group.text][1][dayOfWeek].push(subGroupA);
+                    json[GREEN_WEEK_TITLE][group.text][2][dayOfWeek].push(subGroupB);
                 }
             }
         );
@@ -457,17 +622,18 @@ function connectLessonsGroups(groups, timeRow, json, dayOfWeek) {
 }
 
 module.exports.parse = function parse(course, scheduleTable) {
-    const groups = parseGroupsRow(scheduleTable); // массив с группами и их весами
+    const groups = getGroups(scheduleTable);
+    //const timeRow = getSubRows(scheduleTable, 5);
 
     let finalJson = {};
     finalJson[GREEN_WEEK_TITLE] = {};
     finalJson[WHITE_WEEK_TITLE] = {};
     groups.forEach(function (group) {
-        finalJson.green[group.name] = {
+        finalJson.green[group.text] = {
             1: [],
             2: []
         };
-        finalJson.white[group.name] = {
+        finalJson.white[group.text] = {
             1: [],
             2: []
         };
@@ -510,9 +676,9 @@ module.exports.parse = function parse(course, scheduleTable) {
             // цикл дня
             const rowIndex = lessonsIndexes[lessonsIndex];
 
-            const timeRow = getLessonsForRow(scheduleTable, rowIndex);
+            const timeRow = getSubRows(scheduleTable, rowIndex);
             if (timeRow !== undefined) {
-                console.log("\x1b[32m===========ROW: %d === TIME: %s ===========\x1b[0m", rowIndex, timeRow.time);
+                console.log("\x1b[32m========ROW: %d === TIME: %s ========\x1b[0m", rowIndex, timeRow.time);
                 finalJson = connectLessonsGroups(groups, timeRow, finalJson, dayRowIndexes[daysIndex].text);
             } else {
                 // строка с индексом rowIndex - пустая

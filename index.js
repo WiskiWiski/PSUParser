@@ -10,6 +10,7 @@ const fit = require('./parsers/prs_fit.js');
 const cors = require('cors'); // для междоменных запросов
 const app = express(); // для запуска сервера
 const port = 3000;
+const executeTime = 2000;
 
 
 const DEFAULT_FAC = 'fit';
@@ -21,7 +22,7 @@ console.log('');
 
 
 function main(fac, course) {
-    const file = fs.readFileSync('./fits/fit-2.html');
+    const file = fs.readFileSync('./fits/fit-3.html');
     const html = cheerio.load(file, {decodeEntities: false});
     const scheduleTable = html('table').eq(1).children('tbody');
 
@@ -33,6 +34,10 @@ function main(fac, course) {
         default:
             console.log('unknown faculty');
     }
+
+    setTimeout(function () {
+        process.exit();
+    }, executeTime);
 }
 
 

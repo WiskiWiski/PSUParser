@@ -4,7 +4,7 @@
 const cheerio = require('cheerio');
 
 
-module.exports.LessonCell = class LessonCell {
+module.exports.TableCell = class TableCell {
     constructor(cell) {
         if (arguments.length > 0) {
             this.colSpan = cell.colSpan;
@@ -18,18 +18,11 @@ module.exports.LessonCell = class LessonCell {
     }
 };
 
-module.exports.Group = class Group {
+module.exports.SubRows = class SubRows {
     constructor() {
-        this.colSpan = 1;
-        this.name = null;
-    }
-};
-
-module.exports.TimeRowSchedule = class TimeRowSchedule {
-    constructor() {
-        this.hasGreen = false;
-        this.whiteCells = [];
-        this.greenCells = [];
+        this.hasBRow = false;
+        this.aRow = [];
+        this.bRow = [];
         this.time = null;
     }
 };
