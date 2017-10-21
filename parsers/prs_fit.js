@@ -49,7 +49,7 @@ function getGroups(scheduleTable) {
         const groupsSubRows = getSubRows(scheduleTable, groupsRowIndex);
         groups = groupsSubRows.bRow;
         groups.forEach(function (el) {
-            console.log('groups: ' + el.text);
+            console.log('groups [col=%d] : %s', el.colSpan, el.text);
         });
     } else {
         // TODO : Groups not found!
@@ -187,37 +187,35 @@ function buildCleanBRow(timeRowSch, rowA, rowB1, rowB2) {
         Построенную второстепенную строку записывает в объект SubRows - timeRowSch
      */
 
-    function printResA(res) {
+    const logEnable = false;
 
+    function printResA(res) {
         console.log('===========ARR================');
         res.forEach(function (item) {
             console.log('Itm: [col=%d] \'%s\'', item.colSpan, item.text);
         });
-
     }
 
     function printResB(res) {
-
         console.log('===========ARR================');
         res.forEach(function (item) {
             console.log('Itm: [index=%d] [col=%d] \'%s\'', item.index, item.cell.colSpan, item.cell.text);
         });
-
     }
 
-    /*
-    console.log('rowA: ');
-    printResA(rowA);
-    console.log('\nrowB1: ');
-    printResB(rowB1);
-    console.log('\nrowB2: ');
-    printResB(rowB2);
-*/
+    if (logEnable) {
+        console.log('rowA: ');
+        printResA(rowA);
+        console.log('\nrowB1: ');
+        printResB(rowB1);
+        console.log('\nrowB2: ');
+        printResB(rowB2);
+    }
 
     const cleanARowCount = rowA.length - rowB1.length;
     if (cleanARowCount === rowB2.length) {
         // Случай - simple
-        //console.log('\nSIMPLE-Type\n');
+        if (logEnable) console.log('\nSIMPLE-Type\n');
         let takeFromB2Count = 0;
         let item;
         for (let index = 0; index < rowB1.length; index++) {
@@ -232,10 +230,16 @@ function buildCleanBRow(timeRowSch, rowA, rowB1, rowB2) {
                 }
             }
         }
+        if (rowB2.length > 0) {
+            // записываем оставшиеся в rowB2 ячейки в пезультат
+            timeRowSch.bRow = timeRowSch.bRow.concat(rowB2.map(item => item.cell))
+        }
+
 
     } else if (cleanARowCount > rowB2.length) {
         // Случай - A
-        //console.log('\nA-Type\n');
+        if (logEnable) console.log('\nA-Type\n');
+
         let aItemIndex = 0;
         rowB2.forEach(function (item) {
             let aItemSum = 0;
@@ -257,7 +261,7 @@ function buildCleanBRow(timeRowSch, rowA, rowB1, rowB2) {
         });
     } else if (cleanARowCount < rowB2.length) {
         // Случай - B
-        //console.log('\nB-Type\n');
+        if (logEnable) console.log('\nB-Type\n');
 
         let b2ItemIndex = 0;
         rowA.forEach(function (item, index) {
@@ -280,7 +284,7 @@ function buildCleanBRow(timeRowSch, rowA, rowB1, rowB2) {
         });
     }
 
-    //printResA(timeRowSch.bRow);
+    if (logEnable) printResA(timeRowSch.bRow);
 }
 
 function getSubRows(scheduleTable, aRowIndex) {
@@ -623,7 +627,12 @@ function connectLessonsGroups(groups, timeRow, json, dayOfWeek) {
 
 module.exports.parse = function parse(course, scheduleTable) {
     const groups = getGroups(scheduleTable);
-    //const timeRow = getSubRows(scheduleTable, 5);
+
+
+    //const timeRow = getSubRows(scheduleTable, 13);
+    //console.log(timeRow);
+    //return;
+
 
     let finalJson = {};
     finalJson[GREEN_WEEK_TITLE] = {};
