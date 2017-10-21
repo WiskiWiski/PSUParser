@@ -27,6 +27,7 @@ class DayRow {
 function getGroups(scheduleTable) {
     // получает список групп для расписания
     // возвращает массив с группами и их весами
+    // при ошибке возвращает объект - OperationStatus
 
     function detectGroupsRowIndex(scheduleTable) {
         // Возвращает индекст строки из таблици, в которой находятся группы
@@ -41,18 +42,31 @@ function getGroups(scheduleTable) {
         return -1;
     }
 
-
     let groups = [];
 
     const groupsRowIndex = detectGroupsRowIndex(scheduleTable);
     if (groupsRowIndex !== -1) {
         const groupsSubRows = getSubRows(scheduleTable, groupsRowIndex);
         groups = groupsSubRows.bRow;
+
+        if (groups.length === 0) {
+            const opStatus = shared.newStatusObject();
+            opStatus.statusError();
+            opStatus.code = shared.OPS_CODE_GROUPS_NOT_FOUND;
+            opStatus.message = 'No one group has found!';
+            return opStatus;
+        }
+
         groups.forEach(function (el) {
             console.log('groups [col=%d] : %s', el.colSpan, el.text);
         });
+
     } else {
-        // TODO : Groups not found!
+        const opStatus = shared.newStatusObject();
+        opStatus.statusError();
+        opStatus.code = shared.OPS_CODE_GROUPS_ROW_NOT_FOUND;
+        opStatus.message = 'Groups row has not found!';
+        return opStatus;
     }
     return groups;
 }
@@ -485,19 +499,23 @@ function subtractSubGroups(groupData) {
             res[1] = groupData[0];
             break;
         case 2:
+        default:
             res[0] = groupData[0];
             res[1] = groupData[1];
             break;
     }
     return res;
-
 }
 
 function connectLessonsGroups(groups, timeRow, json, dayOfWeek) {
+    let logs = [];
     for (let y = 0; y < 1 || (timeRow.hasBRow !== undefined && timeRow.hasBRow && y < 2); y++) {
         let lessonTaken = 0; // Количество взятых уроков
         let previewLessonsSum = 0; // Сумма взятых уроков
         let previewGroupSum = 0; // Суммы взятых групп
+
+        let groupsColSpanSum = 0;
+        let lessonsColSpanSum = 0;
 
         const lessonTime = timeRow.time;
         let lessonsRow;
@@ -510,9 +528,22 @@ function connectLessonsGroups(groups, timeRow, json, dayOfWeek) {
             weekColor = GREEN_WEEK_TITLE;
             lessonsRow = timeRow.bRow;
         }
+
+        lessonsRow.forEach(function (lesson) {
+            if (lesson === undefined) {
+                const opStatus = shared.newStatusObject();
+                opStatus.statusWarning();
+                opStatus.code = shared.OPS_CODE_UNDEFINED_LESSON;
+                opStatus.message = 'Found undefined lesson at ' + dayOfWeek + ', ' + timeRow.time + ' for ' + weekColor + ' week.';
+                logs.push(opStatus);
+            } else {
+                lessonsColSpanSum += lesson.colSpan;
+            }
+        });
         groups.forEach(function (group, i, groupList) {
                 let subGroupsNumb = 0; // Количество подсчитанных подгупп
                 let leftGroupSpan = group.colSpan; // оставшееся место в данной группе
+                groupsColSpanSum += group.colSpan;
 
                 let groupData = [];
 
@@ -607,6 +638,15 @@ function connectLessonsGroups(groups, timeRow, json, dayOfWeek) {
                     }
                 }
 
+                if (groupData.length > 2) {
+                    const opStatus = shared.newStatusObject();
+                    opStatus.statusError();
+                    opStatus.code = shared.OPS_CODE_MORE_TWO_SUBROUPS;
+                    opStatus.message = 'Group \'' + group.text + '\' have ' + groupData.length + ' subgroups at '
+                        + dayOfWeek + ', ' + timeRow.time + ' (' + weekColor + ' week)!';
+                    logs.push(opStatus);
+                }
+
                 const subgroups = subtractSubGroups(groupData);
                 let subGroupA = subgroups[0];
                 let subGroupB = subgroups[1];
@@ -621,16 +661,37 @@ function connectLessonsGroups(groups, timeRow, json, dayOfWeek) {
                 }
             }
         );
+        if (lessonsColSpanSum !== groupsColSpanSum) {
+            const opStatus = shared.newStatusObject();
+            opStatus.statusWarning();
+            opStatus.code = shared.OPS_CODE_COLSPAN_LESSS_NOT_MATCH_GROUPS;
+            opStatus.message = 'Lessons colspan sum not match with groups colspan sum: ' + lessonsColSpanSum
+                + ' vs ' + groupsColSpanSum + ' at ' + dayOfWeek + ', ' + timeRow.time + ' for ' + weekColor + ' week.';
+            logs.push(opStatus);
+        }
     }
-    return json;
+    return logs;
 }
 
 module.exports.parse = function parse(course, scheduleTable) {
+
+    const stats = {
+        finalLogs: [],
+        warningsNumb: 0,
+        errorsNumb: 0
+    };
+
     const groups = getGroups(scheduleTable);
+    if (groups.code !== undefined) {
+        //пришла ошибка
+        if (processNewStatus(stats, groups)) {
+            showFinalStatus(stats);
+            return;
+        }
+    }
 
 
     //const timeRow = getSubRows(scheduleTable, 13);
-    //console.log(timeRow);
     //return;
 
 
@@ -684,19 +745,65 @@ module.exports.parse = function parse(course, scheduleTable) {
         for (let lessonsIndex = 0; lessonsIndex < lessonsIndexes.length; lessonsIndex++) {
             // цикл дня
             const rowIndex = lessonsIndexes[lessonsIndex];
-
             const timeRow = getSubRows(scheduleTable, rowIndex);
             if (timeRow !== undefined) {
                 console.log("\x1b[32m========ROW: %d === TIME: %s ========\x1b[0m", rowIndex, timeRow.time);
-                finalJson = connectLessonsGroups(groups, timeRow, finalJson, dayRowIndexes[daysIndex].text);
+                let logs = connectLessonsGroups(groups, timeRow, finalJson, dayRowIndexes[daysIndex].text);
+
+                if (logs.length > 0) {
+                    // Вывод сообщение
+                    logs.forEach(function (opStatus, index) {
+                        let color = shared.DEFAUL_COLORS;
+                        switch (opStatus.status) {
+                            case shared.OPS_STATUS_WARNING:
+                                color = shared.WARNING_COLOR;
+                                stats.warningsNumb++;
+                                break;
+                            case shared.OPS_STATUS_ERROR:
+                                color = shared.ERROR_COLOR;
+                                stats.errorsNumb++;
+                                break;
+                        }
+                        console.log('%s%d: [%s: %d]: %s', color, index + 1, opStatus.status.toUpperCase(),
+                            opStatus.code, opStatus.message);
+                    });
+                    console.log(shared.DEFAUL_COLORS);
+                    stats.finalLogs = stats.finalLogs.concat(logs);
+                } else {
+                    console.log();
+                }
+
             } else {
-                // строка с индексом rowIndex - пустая
+                // строка с индексом rowIndex - undefined
             }
-            console.log();
         }
     }
-    database.save(FAC_TAG, course, finalJson);
+    showFinalStatus(stats);
+
+    if (stats.errorsNumb === 0) {
+        database.save(FAC_TAG, course, finalJson);
+    }
 };
+
+function processNewStatus(stats, opStatus) {
+    stats.finalLogs.push(opStatus);
+    switch (opStatus.status) {
+        case shared.OPS_STATUS_WARNING:
+            stats.warningsNumb++;
+            return false;
+        case shared.OPS_STATUS_ERROR:
+            stats.errorsNumb++;
+            return true;
+        default:
+            return false;
+    }
+}
+
+function showFinalStatus(stats) {
+    console.log('\n%s%sThe schedule has not saved!%s', '\x1b[37m', '\x1b[41m', shared.DEFAUL_COLORS);
+    console.log('%sErrors: %d', shared.ERROR_COLOR, stats.errorsNumb);
+    console.log('%sWarnings: %d%s', shared.WARNING_COLOR, stats.warningsNumb, shared.DEFAUL_COLORS);
+}
 
 
 // color console - https://stackoverflow.com/questions/9781218/how-to-change-node-jss-console-font-color

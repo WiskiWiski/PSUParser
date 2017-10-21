@@ -10,7 +10,7 @@ const fit = require('./parsers/prs_fit.js');
 const cors = require('cors'); // для междоменных запросов
 const app = express(); // для запуска сервера
 const port = 3000;
-const executeTime = 2000;
+const executeTime = 3500;
 
 
 const DEFAULT_FAC = 'fit';
