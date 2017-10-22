@@ -17,6 +17,12 @@ const ROW_TYPE_EMPTY_ROW = 'empty_row';
 
 module.exports.tag = FAC_TAG = 'fit';
 
+const stats = {
+    finalLogs: [],
+    warningsNumb: 0,
+    errorsNumb: 0
+};
+
 class DayRow {
     constructor(rowIndex, text) {
         this.rowIndex = rowIndex;
@@ -508,7 +514,6 @@ function subtractSubGroups(groupData) {
 }
 
 function connectLessonsGroups(groups, timeRow, json, dayOfWeek) {
-    let logs = [];
     for (let y = 0; y < 1 || (timeRow.hasBRow !== undefined && timeRow.hasBRow && y < 2); y++) {
         let lessonTaken = 0; // Количество взятых уроков
         let previewLessonsSum = 0; // Сумма взятых уроков
@@ -535,7 +540,7 @@ function connectLessonsGroups(groups, timeRow, json, dayOfWeek) {
                 opStatus.statusWarning();
                 opStatus.code = shared.OPS_CODE_UNDEFINED_LESSON;
                 opStatus.message = 'Found undefined lesson at ' + dayOfWeek + ', ' + timeRow.time + ' for ' + weekColor + ' week.';
-                logs.push(opStatus);
+                processNewStatus(opStatus);
             } else {
                 lessonsColSpanSum += lesson.colSpan;
             }
@@ -644,7 +649,7 @@ function connectLessonsGroups(groups, timeRow, json, dayOfWeek) {
                     opStatus.code = shared.OPS_CODE_MORE_TWO_SUBROUPS;
                     opStatus.message = 'Group \'' + group.text + '\' have ' + groupData.length + ' subgroups at '
                         + dayOfWeek + ', ' + timeRow.time + ' (' + weekColor + ' week)!';
-                    logs.push(opStatus);
+                    processNewStatus(opStatus);
                 }
 
                 const subgroups = subtractSubGroups(groupData);
@@ -667,24 +672,16 @@ function connectLessonsGroups(groups, timeRow, json, dayOfWeek) {
             opStatus.code = shared.OPS_CODE_COLSPAN_LESSS_NOT_MATCH_GROUPS;
             opStatus.message = 'Lessons colspan sum not match with groups colspan sum: ' + lessonsColSpanSum
                 + ' vs ' + groupsColSpanSum + ' at ' + dayOfWeek + ', ' + timeRow.time + ' for ' + weekColor + ' week.';
-            logs.push(opStatus);
+            processNewStatus(opStatus);
         }
     }
-    return logs;
 }
 
 module.exports.parse = function parse(course, scheduleTable) {
-
-    const stats = {
-        finalLogs: [],
-        warningsNumb: 0,
-        errorsNumb: 0
-    };
-
     const groups = getGroups(scheduleTable);
     if (groups.code !== undefined) {
         //пришла ошибка
-        if (processNewStatus(stats, groups)) {
+        if (processNewStatus(groups)) {
             showFinalStatus(stats);
             return;
         }
@@ -738,7 +735,6 @@ module.exports.parse = function parse(course, scheduleTable) {
             finalJson.white[groupName][2][dayRowIndexes[daysIndex].text].push([]);
         }
 
-
         const lessonsIndexes = dayLessonsRowIndexes[daysIndex];
 
 
@@ -748,44 +744,21 @@ module.exports.parse = function parse(course, scheduleTable) {
             const timeRow = getSubRows(scheduleTable, rowIndex);
             if (timeRow !== undefined) {
                 console.log("\x1b[32m========ROW: %d === TIME: %s ========\x1b[0m", rowIndex, timeRow.time);
-                let logs = connectLessonsGroups(groups, timeRow, finalJson, dayRowIndexes[daysIndex].text);
-
-                if (logs.length > 0) {
-                    // Вывод сообщение
-                    logs.forEach(function (opStatus, index) {
-                        let color = shared.DEFAUL_COLORS;
-                        switch (opStatus.status) {
-                            case shared.OPS_STATUS_WARNING:
-                                color = shared.WARNING_COLOR;
-                                stats.warningsNumb++;
-                                break;
-                            case shared.OPS_STATUS_ERROR:
-                                color = shared.ERROR_COLOR;
-                                stats.errorsNumb++;
-                                break;
-                        }
-                        console.log('%s%d: [%s: %d]: %s', color, index + 1, opStatus.status.toUpperCase(),
-                            opStatus.code, opStatus.message);
-                    });
-                    console.log(shared.DEFAUL_COLORS);
-                    stats.finalLogs = stats.finalLogs.concat(logs);
-                } else {
-                    console.log();
-                }
-
+                connectLessonsGroups(groups, timeRow, finalJson, dayRowIndexes[daysIndex].text);
+                console.log();
             } else {
                 // строка с индексом rowIndex - undefined
             }
         }
     }
-    showFinalStatus(stats);
-
     if (stats.errorsNumb === 0) {
+
         database.save(FAC_TAG, course, finalJson);
     }
+    showFinalStatus(stats);
 };
 
-function processNewStatus(stats, opStatus) {
+function processNewStatus(opStatus) {
     stats.finalLogs.push(opStatus);
     switch (opStatus.status) {
         case shared.OPS_STATUS_WARNING:
@@ -800,9 +773,32 @@ function processNewStatus(stats, opStatus) {
 }
 
 function showFinalStatus(stats) {
-    console.log('\n%s%sThe schedule has not saved!%s', '\x1b[37m', '\x1b[41m', shared.DEFAUL_COLORS);
+    console.log('\n====================LOGS=======================');
+    if  (stats.finalLogs.length > 0){
+        stats.finalLogs.forEach(function (opStatus, index) {
+            let color = shared.DEFAUL_COLORS;
+            switch (opStatus.status) {
+                case shared.OPS_STATUS_WARNING:
+                    color = shared.WARNING_COLOR;
+                    break;
+                case shared.OPS_STATUS_ERROR:
+                    color = shared.ERROR_COLOR;
+                    break;
+            }
+            console.log('%s%d: [%s: %d]: %s', color, index + 1, opStatus.status.toUpperCase(),
+                opStatus.code, opStatus.message);
+        });
+        console.log(shared.DEFAUL_COLORS);
+    }
+
+
     console.log('%sErrors: %d', shared.ERROR_COLOR, stats.errorsNumb);
     console.log('%sWarnings: %d%s', shared.WARNING_COLOR, stats.warningsNumb, shared.DEFAUL_COLORS);
+    if (stats.errorsNumb > 0) {
+        console.log('%s%sThe schedule has not saved!%s', '\x1b[37m', '\x1b[41m', shared.DEFAUL_COLORS);
+    } else {
+        console.log('%s%sThe schedule has saved!%s', '\x1b[37m', '\x1b[42m', shared.DEFAUL_COLORS);
+    }
 }
 
 
