@@ -9,6 +9,9 @@ module.exports.ERROR_COLOR = '\x1b[31m';
 module.exports.WARNING_COLOR = '\x1b[33m';
 module.exports.DEFAUL_COLORS = '\x1b[0m';
 
+module.exports.PROGRESS_STATUS_LOGS = 'logs';
+module.exports.PROGRESS_STATUS_FINISH = 'finish';
+
 module.exports.TableCell = class TableCell {
     constructor(cell) {
         if (arguments.length > 0) {

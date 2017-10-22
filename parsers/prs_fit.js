@@ -50,7 +50,18 @@ function getGroups(scheduleTable) {
 
     let groups = [];
 
+    const progressObj = {
+        title: 'Getting groups...',
+        percent: 0,
+        status: shared.PROGRESS_STATUS_LOGS,
+        stage: 1
+    };
+
+
     const groupsRowIndex = detectGroupsRowIndex(scheduleTable);
+    progressObj.percent = 40;
+    updateProgress(progressObj);
+
     if (groupsRowIndex !== -1) {
         const groupsSubRows = getSubRows(scheduleTable, groupsRowIndex);
         groups = groupsSubRows.bRow;
@@ -62,6 +73,9 @@ function getGroups(scheduleTable) {
             opStatus.message = 'No one group has found!';
             return opStatus;
         }
+
+        progressObj.percent = 100;
+        updateProgress(progressObj);
 
         groups.forEach(function (el) {
             console.log('groups [col=%d] : %s', el.colSpan, el.text);
@@ -398,8 +412,19 @@ function getSubRows(scheduleTable, aRowIndex) {
 }
 
 function grabDaysIndexes(scheduleTable) {
+    const progressObj = {
+        title: 'Detecting day rows...',
+        percent: 0,
+        status: shared.PROGRESS_STATUS_LOGS,
+        stage: 2
+    };
+
+    const length = scheduleTable.children('tr').length;
     let indexes = [];
     scheduleTable.children('tr').each(function (index, elem) {
+        progressObj.percent = (index + 1) * 100 / length;
+        updateProgress(progressObj);
+
         const table = scheduleTable.children(elem);
         const rowspanAttr = parseInt(table.children().attr('rowspan'));
         if (rowspanAttr >= MIN_REQUIRED_ROWSPAN_VALUE) {
@@ -408,16 +433,29 @@ function grabDaysIndexes(scheduleTable) {
             indexes.push(day);
             //console.log('Attr: %s on %d row: %s', rowspanAttr, indexes[indexes.length - 1].rowIndex, dayText);
         }
+
+
     });
     return indexes;
 }
 
 function grabLessonsForDaysRowIndexes(scheduleTable, daysIndexes) {
+    const progressObj = {
+        title: 'Detecting lesson rows...',
+        percent: 0,
+        status: shared.PROGRESS_STATUS_LOGS,
+        stage: 3
+    };
+    const length = scheduleTable.children('tr').length;
+
     let lessonIndex = [];
     const dayLessonsRowIndexes = []; // двумерный массив, хранящий индексы строк с расписанием для каждого дня недели
     let currentDayIndex = 0; // индекс элемента из массива daysIndexes
     let skipNextRow = false; // для пропуска, следеющих за зелеными строками, строк
     scheduleTable.children('tr').each(function (index, elem) {
+        progressObj.percent = (index + 1) * 100 / length;
+        updateProgress(progressObj);
+
         if (index < daysIndexes[0].rowIndex) {
             // пропускаем индексы до первого дня (т е строку с группами)
             return;
@@ -683,6 +721,7 @@ module.exports.parse = function parse(course, scheduleTable) {
         //пришла ошибка
         if (processNewStatus(groups)) {
             showFinalStatus(stats);
+            updateProgressOnFinish('Groups parsing failed');
             return;
         }
     }
@@ -738,8 +777,21 @@ module.exports.parse = function parse(course, scheduleTable) {
         const lessonsIndexes = dayLessonsRowIndexes[daysIndex];
 
 
+        const progressObj = {
+            title: 'Parsing ' + dayRowIndexes[daysIndex].text + ' timetable...',
+            percent: 0,
+            status: shared.PROGRESS_STATUS_LOGS,
+            stage: daysIndex + 4
+        };
+
+        const maxVal = lessonsIndexes.length;
         for (let lessonsIndex = 0; lessonsIndex < lessonsIndexes.length; lessonsIndex++) {
             // цикл дня
+
+            progressObj.percent = (lessonsIndex + 1 ) * 100 / maxVal;
+            progressObj.title = 'Parsing ' + dayRowIndexes[daysIndex].text + ' lesson #' + (lessonsIndex + 1) + ' ...';
+            updateProgress(progressObj);
+
             const rowIndex = lessonsIndexes[lessonsIndex];
             const timeRow = getSubRows(scheduleTable, rowIndex);
             if (timeRow !== undefined) {
@@ -752,10 +804,10 @@ module.exports.parse = function parse(course, scheduleTable) {
         }
     }
     if (stats.errorsNumb === 0) {
-
         database.save(FAC_TAG, course, finalJson);
     }
-    showFinalStatus(stats);
+
+    updateProgressOnFinish();
 };
 
 function processNewStatus(opStatus) {
@@ -772,9 +824,9 @@ function processNewStatus(opStatus) {
     }
 }
 
-function showFinalStatus(stats) {
+function showFinalStatus() {
     console.log('\n====================LOGS=======================');
-    if  (stats.finalLogs.length > 0){
+    if (stats.finalLogs.length > 0) {
         stats.finalLogs.forEach(function (opStatus, index) {
             let color = shared.DEFAUL_COLORS;
             switch (opStatus.status) {
@@ -798,6 +850,37 @@ function showFinalStatus(stats) {
         console.log('%s%sThe schedule has not saved!%s', '\x1b[37m', '\x1b[41m', shared.DEFAUL_COLORS);
     } else {
         console.log('%s%sThe schedule has saved!%s', '\x1b[37m', '\x1b[42m', shared.DEFAUL_COLORS);
+    }
+}
+
+function updateProgressOnFinish() {
+    updateProgress({
+        title: 'finish',
+        percent: 100,
+        status: shared.PROGRESS_STATUS_FINISH,
+        stage: 100
+    });
+}
+
+function updateProgress(progressObj) {
+    /*
+    const progressObj = {
+        title:null,
+        status:PROGRESS_STATUS_LOGS,
+        percent:0,
+        stage:0
+    }
+    */
+
+    switch (progressObj.status) {
+        case shared.PROGRESS_STATUS_LOGS:
+            console.log('%s [STAGE:%d]: %d% %s %s', '\x1b[45m', progressObj.stage,
+                progressObj.percent.toFixed(2), progressObj.title, shared.DEFAUL_COLORS);
+            break;
+        case shared.PROGRESS_STATUS_FINISH:
+            console.log('FINISH!');
+            showFinalStatus();
+            break;
     }
 }
 
