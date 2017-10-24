@@ -3,6 +3,7 @@
  */
 const shared = require('./prs_shared.js');
 const database = require('../database.js');
+const loger = require('../loger.js');
 
 const GREEN_WEEK_TITLE = 'green';
 const WHITE_WEEK_TITLE = 'white';
@@ -17,12 +18,6 @@ const ROW_TYPE_EMPTY_ROW = 'empty_row';
 
 module.exports.tag = FAC_TAG = 'fit';
 
-const stats = {
-    finalLogs: [],
-    warningsNumb: 0,
-    errorsNumb: 0
-};
-
 class DayRow {
     constructor(rowIndex, text) {
         this.rowIndex = rowIndex;
@@ -33,7 +28,6 @@ class DayRow {
 function getGroups(scheduleTable) {
     // получает список групп для расписания
     // возвращает массив с группами и их весами
-    // при ошибке возвращает объект - OperationStatus
 
     function detectGroupsRowIndex(scheduleTable) {
         // Возвращает индекст строки из таблици, в которой находятся группы
@@ -41,7 +35,7 @@ function getGroups(scheduleTable) {
         const rowCount = scheduleTable.children('tr').length;
         for (let k = 0; k < 6 && k < rowCount; k++) {
             // Крайне маловероятно, что строка с группами будет ниже 6-ого ряда
-            if (getRowInfo(scheduleTable, k).type === ROW_TYPE_GROUP_ROW) {
+            if (getRowInfo(scheduleTable, k).clType === ROW_TYPE_GROUP_ROW) {
                 return k
             }
         }
@@ -50,43 +44,30 @@ function getGroups(scheduleTable) {
 
     let groups = [];
 
-    const progressObj = {
-        title: 'Getting groups...',
-        percent: 0,
-        status: shared.PROGRESS_STATUS_LOGS,
-        stage: 1
-    };
+    const progressObj = loger.newProgressObj();
+    progressObj.title = 'Getting groups...';
+    progressObj.stage = 1;
 
 
     const groupsRowIndex = detectGroupsRowIndex(scheduleTable);
     progressObj.percent = 40;
-    updateProgress(progressObj);
+    loger.updateProgress(progressObj);
 
     if (groupsRowIndex !== -1) {
         const groupsSubRows = getSubRows(scheduleTable, groupsRowIndex);
         groups = groupsSubRows.bRow;
 
-        if (groups.length === 0) {
-            const opStatus = shared.newStatusObject();
-            opStatus.statusError();
-            opStatus.code = shared.OPS_CODE_GROUPS_NOT_FOUND;
-            opStatus.message = 'No one group has found!';
-            return opStatus;
+        progressObj.percent = 100;
+        loger.updateProgress(progressObj);
+
+        if (shared.enableConsoleLogs) {
+            groups.forEach(function (el) {
+                console.log('groups [col=%d] : %s', el.colSpan, el.text);
+            });
         }
 
-        progressObj.percent = 100;
-        updateProgress(progressObj);
-
-        groups.forEach(function (el) {
-            console.log('groups [col=%d] : %s', el.colSpan, el.text);
-        });
-
     } else {
-        const opStatus = shared.newStatusObject();
-        opStatus.statusError();
-        opStatus.code = shared.OPS_CODE_GROUPS_ROW_NOT_FOUND;
-        opStatus.message = 'Groups row has not found!';
-        return opStatus;
+        // Groups row has not found!
     }
     return groups;
 }
@@ -412,18 +393,14 @@ function getSubRows(scheduleTable, aRowIndex) {
 }
 
 function grabDaysIndexes(scheduleTable) {
-    const progressObj = {
-        title: 'Detecting day rows...',
-        percent: 0,
-        status: shared.PROGRESS_STATUS_LOGS,
-        stage: 2
-    };
-
     const length = scheduleTable.children('tr').length;
     let indexes = [];
     scheduleTable.children('tr').each(function (index, elem) {
+        const progressObj = loger.newProgressObj();
+        progressObj.title = 'Detecting day rows...';
+        progressObj.stage = 2;
         progressObj.percent = (index + 1) * 100 / length;
-        updateProgress(progressObj);
+        loger.updateProgress(progressObj);
 
         const table = scheduleTable.children(elem);
         const rowspanAttr = parseInt(table.children().attr('rowspan'));
@@ -440,12 +417,7 @@ function grabDaysIndexes(scheduleTable) {
 }
 
 function grabLessonsForDaysRowIndexes(scheduleTable, daysIndexes) {
-    const progressObj = {
-        title: 'Detecting lesson rows...',
-        percent: 0,
-        status: shared.PROGRESS_STATUS_LOGS,
-        stage: 3
-    };
+
     const length = scheduleTable.children('tr').length;
 
     let lessonIndex = [];
@@ -453,8 +425,11 @@ function grabLessonsForDaysRowIndexes(scheduleTable, daysIndexes) {
     let currentDayIndex = 0; // индекс элемента из массива daysIndexes
     let skipNextRow = false; // для пропуска, следеющих за зелеными строками, строк
     scheduleTable.children('tr').each(function (index, elem) {
+        const progressObj = loger.newProgressObj();
+        progressObj.title = 'Detecting lesson rows...';
+        progressObj.stage = 3;
         progressObj.percent = (index + 1) * 100 / length;
-        updateProgress(progressObj);
+        loger.updateProgress(progressObj);
 
         if (index < daysIndexes[0].rowIndex) {
             // пропускаем индексы до первого дня (т е строку с группами)
@@ -527,7 +502,7 @@ function saveToFinalJson(groupData, dayOfWeek, lessonTime, m, weekColor, groupNa
         });
     }
 
-    console.log('[%s][%s]: %s - %s', weekColor, m, groupName, cell.text);
+    if (shared.enableConsoleLogs) console.log('[%s][%s]: %s - %s', weekColor, m, groupName, cell.text);
     return groupData;
 }
 
@@ -567,18 +542,18 @@ function connectLessonsGroups(groups, timeRow, json, dayOfWeek) {
             lessonsRow = timeRow.aRow;
             weekColor = WHITE_WEEK_TITLE
         } else {
-            console.log("----------------------------");
+            if (shared.enableConsoleLogs) console.log("----------------------------");
             weekColor = GREEN_WEEK_TITLE;
             lessonsRow = timeRow.bRow;
         }
 
         lessonsRow.forEach(function (lesson) {
             if (lesson === undefined) {
-                const opStatus = shared.newStatusObject();
-                opStatus.statusWarning();
-                opStatus.code = shared.OPS_CODE_UNDEFINED_LESSON;
-                opStatus.message = 'Found undefined lesson at ' + dayOfWeek + ', ' + timeRow.time + ' for ' + weekColor + ' week.';
-                processNewStatus(opStatus);
+                const logObj = loger.newLogObj();
+                logObj.statusWarning();
+                logObj.code = loger.OPS_CODE_UNDEFINED_LESSON;
+                logObj.message = 'Found undefined lesson at ' + dayOfWeek + ', ' + timeRow.time + ' for ' + weekColor + ' week.';
+                loger.sendLog(logObj);
             } else {
                 lessonsColSpanSum += lesson.colSpan;
             }
@@ -682,12 +657,12 @@ function connectLessonsGroups(groups, timeRow, json, dayOfWeek) {
                 }
 
                 if (groupData.length > 2) {
-                    const opStatus = shared.newStatusObject();
+                    const opStatus = loger.newLogObj();
                     opStatus.statusError();
-                    opStatus.code = shared.OPS_CODE_MORE_TWO_SUBROUPS;
+                    opStatus.code = loger.OPS_CODE_MORE_TWO_SUBROUPS;
                     opStatus.message = 'Group \'' + group.text + '\' have ' + groupData.length + ' subgroups at '
                         + dayOfWeek + ', ' + timeRow.time + ' (' + weekColor + ' week)!';
-                    processNewStatus(opStatus);
+                    loger.sendLog(opStatus);
                 }
 
                 const subgroups = subtractSubGroups(groupData);
@@ -705,27 +680,18 @@ function connectLessonsGroups(groups, timeRow, json, dayOfWeek) {
             }
         );
         if (lessonsColSpanSum !== groupsColSpanSum) {
-            const opStatus = shared.newStatusObject();
-            opStatus.statusWarning();
-            opStatus.code = shared.OPS_CODE_COLSPAN_LESSS_NOT_MATCH_GROUPS;
-            opStatus.message = 'Lessons colspan sum not match with groups colspan sum: ' + lessonsColSpanSum
+            const logObj = loger.newLogObj();
+            logObj.statusWarning();
+            logObj.code = loger.OPS_CODE_COLSPAN_LESSS_NOT_MATCH_GROUPS;
+            logObj.message = 'Lessons colspan sum not match with groups colspan sum: ' + lessonsColSpanSum
                 + ' vs ' + groupsColSpanSum + ' at ' + dayOfWeek + ', ' + timeRow.time + ' for ' + weekColor + ' week.';
-            processNewStatus(opStatus);
+            loger.sendLog(logObj);
         }
     }
 }
 
 module.exports.parse = function parse(course, scheduleTable) {
     const groups = getGroups(scheduleTable);
-    if (groups.code !== undefined) {
-        //пришла ошибка
-        if (processNewStatus(groups)) {
-            showFinalStatus(stats);
-            updateProgressOnFinish('Groups parsing failed');
-            return;
-        }
-    }
-
 
     //const timeRow = getSubRows(scheduleTable, 13);
     //return;
@@ -753,7 +719,7 @@ module.exports.parse = function parse(course, scheduleTable) {
 
     for (let daysIndex = 0; daysIndex < dayLessonsRowIndexes.length; daysIndex++) {
         //Цикл недели
-        console.log('\n\x1b[42m        DAY: %s        \x1b[0m', dayRowIndexes[daysIndex].text);
+        if (shared.enableConsoleLogs) console.log('\n\x1b[42m        DAY: %s        \x1b[0m', dayRowIndexes[daysIndex].text);
 
         for (const groupName in finalJson.white) {
             //заполняем дни для зелёной недели
@@ -777,112 +743,34 @@ module.exports.parse = function parse(course, scheduleTable) {
         const lessonsIndexes = dayLessonsRowIndexes[daysIndex];
 
 
-        const progressObj = {
-            title: 'Parsing ' + dayRowIndexes[daysIndex].text + ' timetable...',
-            percent: 0,
-            status: shared.PROGRESS_STATUS_LOGS,
-            stage: daysIndex + 4
-        };
-
         const maxVal = lessonsIndexes.length;
         for (let lessonsIndex = 0; lessonsIndex < lessonsIndexes.length; lessonsIndex++) {
             // цикл дня
 
+            const progressObj = {
+                title: 'Parsing ' + dayRowIndexes[daysIndex].text + ' timetable...',
+                percent: 0,
+                stage: daysIndex + 4
+            };
             progressObj.percent = (lessonsIndex + 1 ) * 100 / maxVal;
             progressObj.title = 'Parsing ' + dayRowIndexes[daysIndex].text + ' lesson #' + (lessonsIndex + 1) + ' ...';
-            updateProgress(progressObj);
+            loger.updateProgress(progressObj);
 
             const rowIndex = lessonsIndexes[lessonsIndex];
             const timeRow = getSubRows(scheduleTable, rowIndex);
             if (timeRow !== undefined) {
-                console.log("\x1b[32m========ROW: %d === TIME: %s ========\x1b[0m", rowIndex, timeRow.time);
+                if (shared.enableConsoleLogs) console.log("\x1b[32m========ROW: %d === TIME: %s ========\x1b[0m", rowIndex, timeRow.time);
                 connectLessonsGroups(groups, timeRow, finalJson, dayRowIndexes[daysIndex].text);
-                console.log();
+                if (shared.enableConsoleLogs) console.log();
             } else {
                 // строка с индексом rowIndex - undefined
             }
         }
     }
-    if (stats.errorsNumb === 0) {
-        database.save(FAC_TAG, course, finalJson);
-    }
-
-    updateProgressOnFinish();
+    database.save(FAC_TAG, course, finalJson);
+    loger.finish();
+    loger.printLogs(loger.CL_LOG);
 };
-
-function processNewStatus(opStatus) {
-    stats.finalLogs.push(opStatus);
-    switch (opStatus.status) {
-        case shared.OPS_STATUS_WARNING:
-            stats.warningsNumb++;
-            return false;
-        case shared.OPS_STATUS_ERROR:
-            stats.errorsNumb++;
-            return true;
-        default:
-            return false;
-    }
-}
-
-function showFinalStatus() {
-    console.log('\n====================LOGS=======================');
-    if (stats.finalLogs.length > 0) {
-        stats.finalLogs.forEach(function (opStatus, index) {
-            let color = shared.DEFAUL_COLORS;
-            switch (opStatus.status) {
-                case shared.OPS_STATUS_WARNING:
-                    color = shared.WARNING_COLOR;
-                    break;
-                case shared.OPS_STATUS_ERROR:
-                    color = shared.ERROR_COLOR;
-                    break;
-            }
-            console.log('%s%d: [%s: %d]: %s', color, index + 1, opStatus.status.toUpperCase(),
-                opStatus.code, opStatus.message);
-        });
-        console.log(shared.DEFAUL_COLORS);
-    }
-
-
-    console.log('%sErrors: %d', shared.ERROR_COLOR, stats.errorsNumb);
-    console.log('%sWarnings: %d%s', shared.WARNING_COLOR, stats.warningsNumb, shared.DEFAUL_COLORS);
-    if (stats.errorsNumb > 0) {
-        console.log('%s%sThe schedule has not saved!%s', '\x1b[37m', '\x1b[41m', shared.DEFAUL_COLORS);
-    } else {
-        console.log('%s%sThe schedule has saved!%s', '\x1b[37m', '\x1b[42m', shared.DEFAUL_COLORS);
-    }
-}
-
-function updateProgressOnFinish() {
-    updateProgress({
-        title: 'finish',
-        percent: 100,
-        status: shared.PROGRESS_STATUS_FINISH,
-        stage: 100
-    });
-}
-
-function updateProgress(progressObj) {
-    /*
-    const progressObj = {
-        title:null,
-        status:PROGRESS_STATUS_LOGS,
-        percent:0,
-        stage:0
-    }
-    */
-
-    switch (progressObj.status) {
-        case shared.PROGRESS_STATUS_LOGS:
-            console.log('%s [STAGE:%d]: %d% %s %s', '\x1b[45m', progressObj.stage,
-                progressObj.percent.toFixed(2), progressObj.title, shared.DEFAUL_COLORS);
-            break;
-        case shared.PROGRESS_STATUS_FINISH:
-            console.log('FINISH!');
-            showFinalStatus();
-            break;
-    }
-}
 
 
 // color console - https://stackoverflow.com/questions/9781218/how-to-change-node-jss-console-font-color
