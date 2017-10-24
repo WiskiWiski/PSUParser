@@ -1,52 +1,50 @@
 const express = require('express');
+const bodyParser = require('body-parser');
 
 
 const fs = require('fs');
 const cheerio = require('cheerio');
-const shared = require('./parsers/prs_shared.js');
 const fit = require('./parsers/prs_fit.js');
 
 
 const cors = require('cors'); // для междоменных запросов
 const app = express(); // для запуска сервера
 const port = 3000;
-const executeTime = 3500;
 
 
-const DEFAULT_FAC = 'fit';
-const DEFAULT_COURSE = 4;
+//autostart();
 
-console.log('');
-main(DEFAULT_FAC, DEFAULT_COURSE);
-console.log('');
+function autostart() {
+    const offLineCourse = 2;
+    const htmlStr = fs.readFileSync('./fits/fit-' + offLineCourse + '.html');
+    const html = cheerio.load(htmlStr, {decodeEntities: false});
+    const scheduleTable = html('table').eq(1).children('tbody');
+    fit.parse(offLineCourse, scheduleTable);
+}
 
-
-function main(fac, course) {
-    const file = fs.readFileSync('./fits/fit-' +  course + '.html');
-    const html = cheerio.load(file, {decodeEntities: false});
+function main(req, res) {
+    const html = cheerio.load(req.body.html, {decodeEntities: false});
     const scheduleTable = html('table').eq(1).children('tbody');
 
-
-    switch (fac) {
+    const course = req.body.course;
+    switch (req.body.fac) {
         case fit.tag:
-            fit.parse(course, scheduleTable);
+            res.setHeader('content-type', 'text/javascript');
+            res.end(fit.parse(course, scheduleTable, res));
             break;
         default:
             console.log('unknown faculty');
+            res.end('unknown faculty');
     }
-
-    setTimeout(function () {
-        process.exit();
-    }, executeTime);
 }
-
 
 /////////////////////////////////////// SERVER ///////////////////////////////////////////
 app.use(cors({origin: true})); // одобрение междоменных запросов
+app.use(bodyParser.json()); // одобрение междоменных запросов
 
-app.get('/', (req, res) => {
-    //console.log('fac: ' + req.fac);
-    res.end(main(DEFAULT_COURSE, DEFAULT_FAC));
+app.post('/', (req, res) => {
+    main(req, res);
+    //res.end(main(DEFAULT_COURSE, DEFAULT_FAC));
 });
 
 

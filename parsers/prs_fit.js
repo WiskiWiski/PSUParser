@@ -35,7 +35,7 @@ function getGroups(scheduleTable) {
         const rowCount = scheduleTable.children('tr').length;
         for (let k = 0; k < 6 && k < rowCount; k++) {
             // Крайне маловероятно, что строка с группами будет ниже 6-ого ряда
-            if (getRowInfo(scheduleTable, k).clType === ROW_TYPE_GROUP_ROW) {
+            if (getRowInfo(scheduleTable, k).type === ROW_TYPE_GROUP_ROW) {
                 return k
             }
         }
@@ -44,12 +44,10 @@ function getGroups(scheduleTable) {
 
     let groups = [];
 
+    const groupsRowIndex = detectGroupsRowIndex(scheduleTable);
     const progressObj = loger.newProgressObj();
     progressObj.title = 'Getting groups...';
     progressObj.stage = 1;
-
-
-    const groupsRowIndex = detectGroupsRowIndex(scheduleTable);
     progressObj.percent = 40;
     loger.updateProgress(progressObj);
 
@@ -57,6 +55,9 @@ function getGroups(scheduleTable) {
         const groupsSubRows = getSubRows(scheduleTable, groupsRowIndex);
         groups = groupsSubRows.bRow;
 
+        const progressObj = loger.newProgressObj();
+        progressObj.title = 'Getting groups...';
+        progressObj.stage = 1;
         progressObj.percent = 100;
         loger.updateProgress(progressObj);
 
@@ -65,9 +66,13 @@ function getGroups(scheduleTable) {
                 console.log('groups [col=%d] : %s', el.colSpan, el.text);
             });
         }
-
     } else {
         // Groups row has not found!
+        const logObj = loger.newLogObj();
+        logObj.code = loger.OPS_CODE_GROUPS_ROW_NOT_FOUND;
+        logObj.message = 'Groups row has not found!';
+        logObj.status = logObj.OPS_STATUS_ERROR;
+        logObj.sendLog(logObj);
     }
     return groups;
 }
@@ -128,6 +133,7 @@ function getRowInfo(scheduleTable, aRowIndex) {
             const cellText = shared.clearForMultipleSpaces(timeRow.children(elem).text().trim());
 
             const isClockCell = cellText.toLowerCase().indexOf('часы') !== -1;
+
             if (isClockCell) {
                 // Если строка с группами
 
@@ -141,7 +147,6 @@ function getRowInfo(scheduleTable, aRowIndex) {
 
             } else {
                 // Если любая другая строка
-
                 if (subRow === SUBROW_A) {
                     // Подстрока А
                     if (celRowSpan > 2) {
@@ -151,12 +156,13 @@ function getRowInfo(scheduleTable, aRowIndex) {
                         return;
                     }
 
-                    // проверка значения ячейки на содержание \n и (1-9 или . или , или пробела)
-                    const isTimeCol = cellText.indexOf('\n') !== -1 && REG_EXPRESSION_FOR_DATE_CELL.test(cellText);
+                    // проверка значения ячейки на содержание (1-9 или . или , или пробела)
+                    const isTimeCol = REG_EXPRESSION_FOR_DATE_CELL.test(cellText);
                     if (isTimeCol) {
                         // ячейка со временем
                         result.type = ROW_TYPE_TIME_ROW;
                         skipColonsN++;
+                        // TODO : разделить 9.0010.20 на два времени
                         result.time = cellText.replace('\n', ' ');
 
                         if (celRowSpan === 2) {
@@ -663,6 +669,7 @@ function connectLessonsGroups(groups, timeRow, json, dayOfWeek) {
                     opStatus.message = 'Group \'' + group.text + '\' have ' + groupData.length + ' subgroups at '
                         + dayOfWeek + ', ' + timeRow.time + ' (' + weekColor + ' week)!';
                     loger.sendLog(opStatus);
+
                 }
 
                 const subgroups = subtractSubGroups(groupData);
@@ -691,6 +698,8 @@ function connectLessonsGroups(groups, timeRow, json, dayOfWeek) {
 }
 
 module.exports.parse = function parse(course, scheduleTable) {
+    loger.clearLogs();
+
     const groups = getGroups(scheduleTable);
 
     //const timeRow = getSubRows(scheduleTable, 13);
@@ -769,7 +778,10 @@ module.exports.parse = function parse(course, scheduleTable) {
     }
     database.save(FAC_TAG, course, finalJson);
     loger.finish();
+
+    console.log('\n\x1b[42m        %s-%d processing complete!        \x1b[0m', FAC_TAG.toUpperCase(), course);
     loger.printLogs(loger.CL_LOG);
+    return loger.getLogsString(loger.CL_LOG);
 };
 
 
