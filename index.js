@@ -1,57 +1,25 @@
-const express = require('express');
-const bodyParser = require('body-parser');
+const functions = require('firebase-functions');
+const parser = require('./parser.js');
+const cors = require('cors')({origin: true}); // https://medium.com/trisfera/using-cors-in-express-cac7e29b005b
+//const cors = require('cors')({origin: 'http://wiskiw.esy.es'}); // https://medium.com/trisfera/using-cors-in-express-cac7e29b005b
 
+// 'http://wiskiw.esy.es'
+//  https://us-central1-psu-by.cloudfunctions.net/psu
+// https://cloud.google.com/functions/docs/writing/http
 
-const fs = require('fs');
-const cheerio = require('cheerio');
-const fit = require('./parsers/prs_fit.js');
+const tableStyle = '<style type="text/css">TABLE { border-collapse: collapse; /* Убираем двойные линии между ячейками */} TD, TH {padding: 3px; /* Поля вокруг содержимого таблицы */border: 1px solid black; /* Параметры рамки */}</style>'
 
-
-const cors = require('cors'); // для междоменных запросов
-const app = express(); // для запуска сервера
-const port = 3000;
-
-
-//autostart();
-
-function autostart() {
-    const offLineCourse = 2;
-    const htmlStr = fs.readFileSync('./fits/fit-' + offLineCourse + '.html');
-    const html = cheerio.load(htmlStr, {decodeEntities: false});
-    const scheduleTable = html('table').eq(1).children('tbody');
-    fit.parse(offLineCourse, scheduleTable);
-}
-
-function main(req, res) {
-    const html = cheerio.load(req.body.html, {decodeEntities: false});
-    const scheduleTable = html('table').eq(1).children('tbody');
-
-    const course = req.body.course;
-    switch (req.body.fac) {
-        case fit.tag:
-            res.setHeader('content-type', 'text/javascript');
-            res.end(fit.parse(course, scheduleTable, res));
-            break;
-        default:
-            console.log('unknown faculty');
-            res.end('unknown faculty');
-    }
-}
-
-/////////////////////////////////////// SERVER ///////////////////////////////////////////
-app.use(cors({origin: true})); // одобрение междоменных запросов
-app.use(bodyParser.json()); // одобрение междоменных запросов
-
-app.post('/', (req, res) => {
-    main(req, res);
-    //res.end(main(DEFAULT_COURSE, DEFAULT_FAC));
-});
-
-
-// запуск сервера
-app.listen(port, (err) => {
-    if (err) {
-        return console.log('something bad happened', err)
-    }
-    console.log(`server is listening on ${port}`)
+exports.psu = functions.https.onRequest((req, res) => {
+    cors(req, res, () => {
+		// req.body.fac
+		// req.body.course
+		if (req.method != "POST" || req.body === undefined) {
+			 res.status(404).end();
+		} else {
+			// Everything is ok
+			console.log('ok');
+			parser.parse(req, res);
+			//res.status(200).end(tableStyle + '\n'+req.body.html);
+		}		
+    });
 });

@@ -107,3 +107,8 @@ com_crashlytics_export_strings.xml
 crashlytics.properties
 crashlytics-build.properties
 fabric.properties
+
+node_modules/
+database.js
+package.json
+fits/
