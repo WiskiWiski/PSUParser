@@ -4,7 +4,7 @@ const bodyParser = require('body-parser');
 
 const fs = require('fs');
 const cheerio = require('cheerio');
-const fit = require('./parsers/prs_fit.js');
+const utils = require('./p_utils.js');
 const parser = require('./parser.js');
 
 
@@ -24,7 +24,11 @@ function autostart() {
 }
 
 function main(req, res) {
-    parser.parse(req,res);
+    if (req.body.action === 'show') {
+        res.status(200).end(utils.tableStyle + '\n' + req.body.html);
+    } else {
+        parser.start(req, res);
+    }
 }
 
 /////////////////////////////////////// SERVER ///////////////////////////////////////////
