@@ -36,13 +36,13 @@ exports.start = function (req, res) {
     const finalJson = {};
 
     /*
-    let rowData = parserPackage.parseRow(1);
+    let rowData = parserPackage.parseRow(47);
     const row = parserPackage.linkLessonsGroupsForRow(rowData, groups, 0);
-    saveLGRowToJson(finalJson, row, 0, 1, rowData.time);
-    console.log(JSON.stringify(finalJson));
+    //saveLGRowToJson(finalJson, row, 0, 1, rowData.time);
+    //console.log(JSON.stringify(finalJson));
     return;
     */
-    
+
     dayList.forEach(function (dayRowsList, dayIndex) {
         // dayRowsList - строки для текущего дня
 

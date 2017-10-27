@@ -220,7 +220,7 @@ exports.RootParser = function RootParser(course, html, loger) {
         }
 
         if (pref.CONSOLE_LOGS_DEBUG_ENABLE) {
-            console.log('rowA: ');
+            console.log('\n\nrowA: ');
             printResA(rowA);
             console.log('\nrowB1: ');
             printResB(rowB1);
@@ -247,7 +247,7 @@ exports.RootParser = function RootParser(course, html, loger) {
                 }
             }
             if (rowB2.length > 0) {
-                // записываем оставшиеся в rowB2 ячейки в пезультат
+                // записываем оставшиеся в rowB2 ячейки в результат
                 timeRowSch.bSubRow = timeRowSch.bSubRow.concat(rowB2.map(item => item.cell))
             }
 
@@ -257,24 +257,31 @@ exports.RootParser = function RootParser(course, html, loger) {
             if (pref.CONSOLE_LOGS_DEBUG_ENABLE) console.log('\nA-Type\n');
 
             let aItemIndex = 0;
-            rowB2.forEach(function (item) {
+
+            for (let index = 0; index < rowB2.length; index++) {
+                const item = rowB2[index];
                 let aItemSum = 0;
                 if (rowB1.length > 0 && aItemIndex === rowB1[0].index) {
                     timeRowSch.bSubRow.push(rowB1.splice(0, 1)[0].cell);
                     aItemIndex++;
+                    index--;
                 } else {
                     while (aItemIndex < rowA.length) {
                         const aItem = rowA[aItemIndex];
                         aItemIndex++;
                         aItemSum += aItem.colSpan;
-                        if (aItemSum >= item.cell.colSpan) {
+                        if (aItemSum >= item.cell.colSpan || aItemIndex + 1 === rowA.length) {
+                            timeRowSch.bSubRow.push(item.cell);
                             break;
                         }
                     }
                 }
-                timeRowSch.bSubRow.push(item.cell);
 
-            });
+            }
+            if (rowB1.length > 0) {
+                // записываем оставшиеся в rowB1 ячейки в результат
+                timeRowSch.bSubRow = timeRowSch.bSubRow.concat(rowB1.map(item => item.cell))
+            }
         } else if (cleanARowCount < rowB2.length) {
             // Случай - B
             if (pref.CONSOLE_LOGS_DEBUG_ENABLE) console.log('\nB-Type\n');
