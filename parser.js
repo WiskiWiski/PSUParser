@@ -6,6 +6,8 @@ const pref = require('./preferences.js');
 const utils = require('./p_utils.js');
 const database = require('./database.js');
 
+let parserPackage;
+
 function getSpecificParserPackage(fac, course, html, loger) {
     switch (fac) {
         case fit_p.tag:
@@ -25,7 +27,7 @@ exports.start = function (req, res) {
 
     const myLoger = new loger.Loger();
 
-    const parserPackage = getSpecificParserPackage(fac, course, html, myLoger);
+    parserPackage = getSpecificParserPackage(fac, course, html, myLoger);
 
     const groups = parserPackage.getGroups();
     const dayList = parserPackage.getRows();
@@ -33,6 +35,14 @@ exports.start = function (req, res) {
 
     const finalJson = {};
 
+    /*
+    let rowData = parserPackage.parseRow(1);
+    const row = parserPackage.linkLessonsGroupsForRow(rowData, groups, 0);
+    saveLGRowToJson(finalJson, row, 0, 1, rowData.time);
+    console.log(JSON.stringify(finalJson));
+    return;
+    */
+    
     dayList.forEach(function (dayRowsList, dayIndex) {
         // dayRowsList - строки для текущего дня
 
@@ -60,7 +70,12 @@ function saveLGRowToJson(json, row, dayIndex, rowIndex, time) {
     function forColorRow(colorRow, color) {
         colorRow.forEach(function (groupLessons) {
             const groupName = groupLessons.groupName;
-            groupLessons.lessons.forEach(function (subGroupLesson, subGroupN) {
+            const len = groupLessons.lessons.length;
+
+            // если массив lessons содержит только одну подгруппу, сохраняем её же для других
+            for (let subGroupN = 0; subGroupN < len || (len === 1 && subGroupN < parserPackage.MAX_SUB_GROUPS_NUMB); subGroupN++) {
+                const subGroupLesson = subGroupN >= len ? groupLessons.lessons[0] : groupLessons.lessons[subGroupN];
+
                 const val = {
                     cell_html: subGroupLesson.element.html(),
                     lesson: subGroupLesson.text,
@@ -68,9 +83,11 @@ function saveLGRowToJson(json, row, dayIndex, rowIndex, time) {
                 };
                 const jsonPath = [color, groupName, subGroupN + 1, dayIndex + 1, rowIndex + 1];
                 pushToJson(json, val, jsonPath);
-            });
+            }
+            ;
         });
     }
+
 
     forColorRow(row[pref.WEEK_TITLE_WHITE], pref.WEEK_TITLE_WHITE);
     if (row[pref.WEEK_TITLE_GREEN] === undefined) {
