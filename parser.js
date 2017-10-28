@@ -32,6 +32,7 @@ exports.start = function (req, res) {
     const groups = parserPackage.getGroups();
     const dayList = parserPackage.getRows();
 
+    console.log('dayList: ' + dayList.length);
 
     const finalJson = {};
 
@@ -83,8 +84,7 @@ function saveLGRowToJson(json, row, dayIndex, rowIndex, time) {
                 };
                 const jsonPath = [color, groupName, subGroupN + 1, dayIndex + 1, rowIndex + 1];
                 pushToJson(json, val, jsonPath);
-            }
-            ;
+            };
         });
     }
 

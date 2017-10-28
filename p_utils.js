@@ -1,4 +1,4 @@
-exports.REG_EXPRESSION_FOR_DATE_CELL = /^[0-9., \n]+$/;
+exports.REG_EXPRESSION_FOR_DATE_CELL = /^[0-9.,\- \n]+$/;
 
 exports.tableStyle = '<style type="text/css">TABLE { border-collapse: collapse; /* Убираем двойные линии между ячейками */} TD, TH {padding: 3px; /* Поля вокруг содержимого таблицы */border: 1px solid black; /* Параметры рамки */}</style>'
 

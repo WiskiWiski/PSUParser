@@ -89,7 +89,8 @@ exports.RootParser = function RootParser(course, html, loger) {
             time: null,
             aSubRow: {
                 skipColonsN: 0,
-                errors: null
+                errors: null,
+                cellRowSpans: [],
 
             },
             bSubRow: {
@@ -125,10 +126,18 @@ exports.RootParser = function RootParser(course, html, loger) {
 
 
                 // проверяем, не содержит ли текущий столбце день недели или время
-                const celRowSpan = parseInt(timeRow.children(elem).first('td').attr('rowspan'));
-                const cellText = utils.clearForMultipleSpaces(timeRow.children(elem).text().trim());
+                let cellRowSpan = parseInt(timeRow.children(elem).first('td').attr('rowspan'));
+                if (isNaN(cellRowSpan)) {
+                    cellRowSpan = 1;
+                }
 
+                const cellText = utils.clearForMultipleSpaces(timeRow.children(elem).text().trim());
                 const isClockCell = cellText.toLowerCase().indexOf('часы') !== -1;
+
+                if (subRow === SUBROW_A) {
+                    //сохраняем RowSpan для ячек белой недели
+                    row.cellRowSpans.push(cellRowSpan);
+                }
 
                 if (isClockCell) {
                     // Если строка с группами
@@ -136,7 +145,7 @@ exports.RootParser = function RootParser(course, html, loger) {
                     forEachIsFinished = true;
                     result.type = ROW_TYPE_GROUP_ROW;
                     skipColonsN++;
-                    if (celRowSpan === 2) {
+                    if (cellRowSpan === 2) {
                         hasGreen = true;
                         result.hasBRow = true;
                     }
@@ -145,7 +154,7 @@ exports.RootParser = function RootParser(course, html, loger) {
                     // Если любая другая строка
                     if (subRow === SUBROW_A) {
                         // Подстрока А
-                        if (celRowSpan > 2) {
+                        if (cellRowSpan > 2) {
                             // ячека с днём недели
                             skipColonsN++;
                             result.day = cellText;
@@ -157,27 +166,27 @@ exports.RootParser = function RootParser(course, html, loger) {
                         if (isTimeCol) {
                             // ячейка со временем
                             result.type = ROW_TYPE_TIME_ROW;
-                            skipColonsN++;
                             // TODO : разделить 9.0010.20 на два времени
                             result.time = cellText.replace('\n', ' ');
 
-                            if (celRowSpan === 2) {
+                            if (cellRowSpan === 2) {
                                 hasGreen = true;
                                 result.hasBRow = true;
                             }
-                            // forEachIsFinished=true для переходя на следующую подстроку, т.к. после неё точно будет расписание
+                            // forEachIsFinished=true для переходя на следующую подстроку,
+                            // т.к. после текущей ячейки точно будет расписание
                             forEachIsFinished = true;
+
+                            skipColonsN++;
                             return;
                         }
-
                     } else {
                         // Подстрока B
 
                     }
 
-                    if (result.type === ROW_TYPE_NONE && cellText === '') {
+                    if (result.type === ROW_TYPE_NONE) {
                         // если еще не определили какого типа строка и ячейка пустая - прибовляем индекс для пропуска ячейки
-
                         skipColonsN++;
                     }
 
@@ -429,15 +438,19 @@ exports.RootParser = function RootParser(course, html, loger) {
         const days = [];
         const rowNumb = scheduleTable.children('tr').length; // количество строк таблицы
 
-        let dayRows;
+        let dayRows = [];
+        let dayRowSpan = 0;
+        let rowRowSpanSum = 0;
         for (let k = 0; k < rowNumb && days.length <= 6; k++) {
             const info = self.getRowInfo(k);
-            if (info.day !== null) {
-                // новый день
-                if (dayRows !== undefined) {
-                    days.push(dayRows);
+            let rowRowSpan = 0;
+            if (info.type === ROW_TYPE_TIME_ROW || info.type === ROW_TYPE_EMPTY_ROW) {
+                if (dayRowSpan === 0) {
+                    dayRowSpan = info.aSubRow.cellRowSpans[0]; // получаем RowSpan для дня
+                    rowRowSpan = info.aSubRow.cellRowSpans[1]; // получаем RowSpan для строки
+                } else {
+                    rowRowSpan = info.aSubRow.cellRowSpans[0]; // получаем RowSpan для строки
                 }
-                dayRows = [];
             }
 
             const logProg = new logerObjects.LogProgress();
@@ -459,14 +472,39 @@ exports.RootParser = function RootParser(course, html, loger) {
                     logMsg.setErrorStatus();
                     logMsg.setCode(logerObjects.MSG_CODE_UNDEFINED_LESSONS_ROW);
                 } else {
+                    rowRowSpanSum += rowRowSpan;
                     dayRows.push(row);
                 }
 
             }
+
+            if (dayRowSpan !== 0 && rowRowSpanSum >= dayRowSpan) {
+                // сохраняем строки текущего дня
+                days.push(dayRows);
+                dayRows = [];
+                rowRowSpanSum = 0;
+                dayRowSpan = 0;
+            }
+
+            if (info.hasBRow) {
+                k++; // пропускаем следующую строку, если после тукущей идет зелёная неделя
+            }
+            console.log();
         }
-        if (dayRows !== undefined) {
+        if (dayRows.length > 0) {
+            // если по какой-то причине сумма RowSpan'ов строк последнего дня недели, не совпала с RowSpan'ом последнего дня недели
+            // записываем уже полученные дни
             days.push(dayRows);
+
+            const logMsg = new logerObjects.LogMessage();
+            logMsg.setWarningStatus();
+            logMsg.setCode(logerObjects.MSG_CODE_BAD_DAY_OR_DAY_LESSONS_ROWSPAN);
+            logMsg.setMessage('Pay attention rowSpan for ' + utils.getDayByIndex(dayRows.length - 1).toLowerCase()
+                + ' - ' + dayRowSpan + '; but lessons rowSpan sum - ' + rowRowSpanSum);
+            loger.log(logMsg);
+
         }
+
         return days;
     };
 
