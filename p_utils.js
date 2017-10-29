@@ -7,6 +7,20 @@ exports.clearForMultipleSpaces = function (str) {
     return str.replace(/  +/g, ' ');
 };
 
+exports.htmlToText = function (html) {
+    if (typeof html !== "string") {
+        html = html.html();
+    }
+    let text = html.replace(/<\s*((br)|(p))\s*[\/]?>/gi, '\n'); // замен <p> и <br> на перенос строки
+    text = text.replace(/<[^>]*>/g, ''); // очиствка от каких-либо html тегов
+
+    text = text.replace(/\s{1,2}(?=[^А-ЯA-Z\d\s])/gm, ''); // очистка от пробелов в слове
+    text = text.replace(/\s{2,}/gm, ' '); // замена множественных пробелов на один пробел
+    text = text.trim();
+    //console.log('[%d]\'%s\'', 1, text);
+    return text || html;
+};
+
 exports.getDayByIndex = function (dayIndex) {
     switch (dayIndex) {
         case 0:

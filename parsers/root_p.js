@@ -131,7 +131,8 @@ exports.RootParser = function RootParser(course, html, loger) {
                     cellRowSpan = 1;
                 }
 
-                const cellText = utils.clearForMultipleSpaces(timeRow.children(elem).text().trim());
+                const cellText = utils.htmlToText(timeRow.children(elem).html());
+
                 const isClockCell = cellText.toLowerCase().indexOf('часы') !== -1;
 
                 if (subRow === SUBROW_A) {
@@ -419,7 +420,7 @@ exports.RootParser = function RootParser(course, html, loger) {
         };
 
         cell.element = cellElement;
-        cell.text = utils.clearForMultipleSpaces(cellElement.text()).trim().replace('\n', ' ');
+        cell.text = utils.htmlToText(cellElement.html());
 
         let colSpan = parseInt(cellElement.attr("colspan"));
         if (isNaN(colSpan)) {
