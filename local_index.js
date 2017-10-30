@@ -16,11 +16,30 @@ const port = 3000;
 //autostart();
 
 function autostart() {
-    const offLineCourse = 2;
+    // для локального запуска
+    const offLineCourse = 3;
     const htmlStr = fs.readFileSync('./fits/fit-' + offLineCourse + '.html');
     const html = cheerio.load(htmlStr, {decodeEntities: false});
-    const scheduleTable = html('table').eq(1).children('tbody');
-    fit.parse(offLineCourse, scheduleTable);
+
+    const req = {
+        body:{
+            html: html.html(),
+            course: offLineCourse,
+            fac: 'fit'
+        }
+    };
+
+    const res = {
+        status: function (code) {
+            // ...do nothing
+            return this;
+        },
+        end: function (msg) {
+            // ...do nothing
+            return this;
+        }
+    };
+    parser.start(req, res);
 }
 
 function main(req, res) {

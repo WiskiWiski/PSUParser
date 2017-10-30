@@ -64,7 +64,6 @@ exports.RootParser = function RootParser(course, html, loger) {
         } else {
             // Groups row has not found!
             const logMsg = new logerObjects.LogMessage();
-            logMsg.setCode();
             logMsg.setMessage('Groups row has not found!');
             logMsg.setErrorStatus();
             logMsg.setCode(logerObjects.MSG_CODE_GROUPS_ROW_NOT_FOUND);
@@ -435,6 +434,8 @@ exports.RootParser = function RootParser(course, html, loger) {
         // Возвращает двумерный массив
         // Массив данных для строки для каждого дня недели
 
+        const DEBUG_LOGS = false;
+
         const PROGRESS_STAGE = 2;
         const days = [];
         const rowNumb = scheduleTable.children('tr').length; // количество строк таблицы
@@ -445,6 +446,7 @@ exports.RootParser = function RootParser(course, html, loger) {
         for (let k = 0; k < rowNumb && days.length <= 6; k++) {
             const info = self.getRowInfo(k);
             let rowRowSpan = 0;
+            if (DEBUG_LOGS) console.log('[%d]: %d/%d', k, dayRowSpan, rowRowSpanSum);
             if (info.type === ROW_TYPE_TIME_ROW || info.type === ROW_TYPE_EMPTY_ROW) {
                 if (dayRowSpan === 0) {
                     dayRowSpan = info.aSubRow.cellRowSpans[0]; // получаем RowSpan для дня
@@ -473,11 +475,11 @@ exports.RootParser = function RootParser(course, html, loger) {
                     logMsg.setErrorStatus();
                     logMsg.setCode(logerObjects.MSG_CODE_UNDEFINED_LESSONS_ROW);
                 } else {
-                    rowRowSpanSum += rowRowSpan;
                     dayRows.push(row);
                 }
 
             }
+            rowRowSpanSum += rowRowSpan;
 
             if (dayRowSpan !== 0 && rowRowSpanSum >= dayRowSpan) {
                 // сохраняем строки текущего дня
@@ -490,7 +492,6 @@ exports.RootParser = function RootParser(course, html, loger) {
             if (info.hasBRow) {
                 k++; // пропускаем следующую строку, если после тукущей идет зелёная неделя
             }
-            console.log();
         }
         if (dayRows.length > 0) {
             // если по какой-то причине сумма RowSpan'ов строк последнего дня недели, не совпала с RowSpan'ом последнего дня недели
@@ -503,7 +504,6 @@ exports.RootParser = function RootParser(course, html, loger) {
             logMsg.setMessage('Pay attention rowSpan for ' + utils.getDayByIndex(dayRows.length - 1).toLowerCase()
                 + ' - ' + dayRowSpan + '; but lessons rowSpan sum - ' + rowRowSpanSum);
             loger.log(logMsg);
-
         }
 
         return days;
@@ -588,7 +588,7 @@ exports.RootParser = function RootParser(course, html, loger) {
         const requiredPresent = (100 / maxGroupNumb);
         const groupColSpan = eGroupColSpan - sGroupColSpan;
         const lessonOverBorders = (sLessonColSpan > sGroupColSpan ? eGroupColSpan - sLessonColSpan : eLessonColSpan - sGroupColSpan);
-        return lessonOverBorders * 100 / groupColSpan >= requiredPresent;
+        return lessonOverBorders * 100 / groupColSpan >= requiredPresent || lessonOverBorders > (eLessonColSpan - sLessonColSpan) / 2;
     };
 
     // Связывает ячейки подстроки с группами
@@ -597,118 +597,237 @@ exports.RootParser = function RootParser(course, html, loger) {
         // groups - массив групп
         // возвращает массив объектов: {groupName: [lesson1, lesson2}
 
+        const DEBUG_LOGS = false;
+
         const result = [];
 
-        let lessonTaken = 0; // Количество взятых уроков
-        let previewLessonsSum = 0; // Сумма взятых уроков
-        let previewGroupSum = 0; // Суммы взятых групп
+        const leftData = {
+            sGroupColSpan: 0,
+            sLessonColSpan: 0,
+            lessonTaken: 0,
+        };
 
-        let groupsColSpanSum = 0;
-
-        groups.forEach(function (group) {
-                const groupObject = {
-                    groupName: group.text,
-                    lessons: []
-                };
-                result.push(groupObject);
-
-                let subGroupsNumb = 0; // Количество подсчитанных подгупп
-                let leftGroupSpan = group.colSpan; // оставшееся место в данной группе
-                groupsColSpanSum += group.colSpan;
+        const rightData = {
+            sGroupColSpan: 0,
+            sLessonColSpan: 0,
+            lessonTaken: 0,
+        };
 
 
-                for (let k = lessonTaken; k < subRow.length; k++) {
-                    if (subGroupsNumb >= maxGroupNumb || leftGroupSpan <= 0) {
-                        previewGroupSum += group.colSpan;
-                        break;
-                    }
+        subRow.forEach(function (lesson, k) {
+            if (DEBUG_LOGS) console.log('[%d]: %d - %s', k, lesson.colSpan, lesson.text)
+        });
 
-                    if (subRow[k] === undefined) {
-                        continue;
-                    }
 
-                    const lessonColSpan = subRow[k].colSpan; // размер урока
+        const groupsNumber = groups.length;
+        const halfLen = Math.ceil(groupsNumber / 2);
+        for (let halfIndex = 0; halfIndex < halfLen; halfIndex++) {
+            const leftGroupIndex = halfIndex;
+            if (DEBUG_LOGS) console.log('\n ===== GROUP[L]: ' + groups[leftGroupIndex].text);
+            const leftGroupLessons = leftToRightProcessor(leftGroupIndex, leftData);
+            result.push({
+                groupName: groups[leftGroupIndex].text,
+                lessons: leftGroupLessons
+            });
+            leftGroupLessons.forEach(function (item) {
+                if (DEBUG_LOGS) console.log('\'%s\'', item.text);
+            });
 
-                    const sGroupColSpan = previewGroupSum; // значение начала группы
-                    const eGroupColSpan = previewGroupSum + group.colSpan; // значение конца группы
-                    const sLessonColSpan = previewLessonsSum; // значение начала урока
-                    const eLessonColSpan = previewLessonsSum + lessonColSpan; // значение конца урока
+            if (groupsNumber - 1 - halfIndex < halfLen) {
+                // если groupsNumber нечетное, то последняя обработка проводится только через leftToRightProcessor()
+                break;
+            }
 
-                    if (sGroupColSpan === sLessonColSpan || eGroupColSpan === eLessonColSpan) {
-                        if (sGroupColSpan === sLessonColSpan && eGroupColSpan === eLessonColSpan) {
-                            // г
-                            lessonTaken++;
-                            previewLessonsSum += lessonColSpan;
-                            previewGroupSum += group.colSpan;
-                            groupObject.lessons.push(subRow[k]);
-                            break;
-                        } else if (sGroupColSpan === sLessonColSpan) {
-                            if (eGroupColSpan > eLessonColSpan) {
-                                // д
-                                lessonTaken++;
-                                previewLessonsSum += lessonColSpan;
-                                subGroupsNumb++;
-                                leftGroupSpan = leftGroupSpan - lessonColSpan;
-                                groupObject.lessons.push(subRow[k]);
-                            } else {
-                                // б1
-                                previewGroupSum += group.colSpan;
-                                groupObject.lessons.push(subRow[k]);
-                                break;
-                            }
-                        } else if (eGroupColSpan === eLessonColSpan) {
-                            if (sGroupColSpan < sLessonColSpan) {
-                                // е
-                                lessonTaken++;
-                                previewLessonsSum += lessonColSpan;
-                                previewGroupSum += group.colSpan;
-                                groupObject.lessons.push(subRow[k]);
-                                break;
-                            } else {
-                                // а1
-                                lessonTaken++;
-                                previewLessonsSum += lessonColSpan;
-                                previewGroupSum += group.colSpan;
-                                groupObject.lessons.push(subRow[k]);
-                                break;
-                            }
-                        }
-                    } else {
-                        if (sGroupColSpan > sLessonColSpan && eGroupColSpan < eLessonColSpan) {
-                            //в1
-                            previewGroupSum += group.colSpan;
-                            groupObject.lessons.push(subRow[k]);
-                            break;
-                        } else {
-                            if (sGroupColSpan < sLessonColSpan && eLessonColSpan < eGroupColSpan) {
-                                // в
-                                lessonTaken++;
-                                previewLessonsSum += lessonColSpan;
-                                leftGroupSpan -= lessonColSpan;
-                                groupObject.lessons.push(subRow[k]);
-                            } else if (eGroupColSpan > eLessonColSpan) {
-                                // а
-                                if (self.allowOverBorders(maxGroupNumb, sGroupColSpan, eGroupColSpan, sLessonColSpan, eLessonColSpan)) {
-                                    groupObject.lessons.push(subRow[k]);
-                                }
-                                lessonTaken++;
-                                previewLessonsSum += lessonColSpan;
-                                leftGroupSpan = leftGroupSpan - (eLessonColSpan - sGroupColSpan);
-                            } else {
-                                // б
-                                if (self.allowOverBorders(maxGroupNumb, sGroupColSpan, eGroupColSpan, sLessonColSpan, eLessonColSpan)) {
-                                    groupObject.lessons.push(subRow[k]);
-                                }
-                                previewGroupSum += group.colSpan;
-                                break;
-                            }
-                        }
-                    }
+            const rightGroupIndex = groupsNumber - 1 - halfIndex;
+            if (DEBUG_LOGS) console.log('\n ===== GROUP[R]: ' + groups[rightGroupIndex].text);
+            const rightGroupLessons = rightToLeftProcessor(rightGroupIndex, rightData);
+            result.push({
+                groupName: groups[rightGroupIndex].text,
+                lessons: rightGroupLessons
+            });
+            rightGroupLessons.forEach(function (item) {
+                if (DEBUG_LOGS) console.log('\'%s\'', item.text);
+            });
+        }
+
+
+        function leftToRightProcessor(groupIndex, data) {
+            // обработчик прохода с лева на право
+
+            const group = groups[groupIndex];
+            const lessonsForGroup = [];
+
+            const sGroupColSpan = data.sGroupColSpan; // значение начала группы
+            const eGroupColSpan = data.sGroupColSpan + group.colSpan; // значение конца группы
+
+            let groupColSpan = group.colSpan;
+            const colSpans = {
+                sGroupColSpan: sGroupColSpan, // значение начала группы
+                eGroupColSpan: eGroupColSpan, // значение конца группы
+                sLessonColSpan: 0, // значение начала урока
+                eLessonColSpan: 0// значение конца урока
+            };
+
+            for (data.lessonTaken; data.lessonTaken < subRow.length;) {
+                colSpans.sLessonColSpan = data.sLessonColSpan; // установка значение начала урока
+                colSpans.eLessonColSpan = data.sLessonColSpan + subRow[data.lessonTaken].colSpan; // установка значение конца урока
+
+                const pResult = self.groupsAndLessonsProcess(maxGroupNumb, colSpans, groupColSpan, subRow[data.lessonTaken]);
+                groupColSpan = pResult.leftGroupSolSpan; // обновление оставщегося свободного места для группы
+
+                if (pResult.lessonTaken) {
+                    // текущий урок использован,
+                    // при следующих итерациях используем другой
+                    data.sLessonColSpan += subRow[data.lessonTaken].colSpan;
+                    data.lessonTaken++;
+                }
+
+                if (pResult.lesson !== null) {
+                    // данный урок засчитан, добавляем его в результат к текущей группе
+                    lessonsForGroup.push(pResult.lesson);
+                }
+
+                if (pResult.subGroupNumber >= maxGroupNumb || groupColSpan <= 0) {
+                    // если максимальное кол-во подгруппы для группы достигнуто
+                    // или место для записи уроков в группе закончилось - переходим к ледующей группе
+                    data.sGroupColSpan = eGroupColSpan;
+                    break;
                 }
             }
-        );
+            return lessonsForGroup;
+        }
+
+        function rightToLeftProcessor(groupIndex, data) {
+            // обработчик прохода с лева на право
+
+            const group = groups[groupIndex];
+            const lessonsForGroup = [];
+
+            const sGroupColSpan = data.sGroupColSpan; // значение начала группы
+            const eGroupColSpan = data.sGroupColSpan + group.colSpan; // значение конца группы
+
+            let groupColSpan = group.colSpan;
+            const colSpans = {
+                sGroupColSpan: sGroupColSpan, // значение начала группы
+                eGroupColSpan: eGroupColSpan, // значение конца группы
+                sLessonColSpan: 0, // значение начала урока
+                eLessonColSpan: 0// значение конца урока
+            };
+
+            for (data.lessonTaken; data.lessonTaken < subRow.length;) {
+                const lesson = subRow[subRow.length - 1 - data.lessonTaken];
+
+                colSpans.sLessonColSpan = data.sLessonColSpan; // установка значение начала урока
+                colSpans.eLessonColSpan = data.sLessonColSpan + lesson.colSpan; // установка значение конца урока
+
+                const pResult = self.groupsAndLessonsProcess(maxGroupNumb, colSpans, groupColSpan, lesson);
+                groupColSpan = pResult.leftGroupSolSpan; // обновление оставщегося свободного места для группы
+
+                if (pResult.lessonTaken) {
+                    // текущий урок использован,
+                    // при следующих итерациях используем другой
+                    data.sLessonColSpan += lesson.colSpan;
+                    data.lessonTaken++;
+                }
+
+                if (pResult.lesson !== null) {
+                    // данный урок засчитан, добавляем его в результат к текущей группе
+                    lessonsForGroup.unshift(pResult.lesson); // unshift - push в начала массива
+                }
+
+                //console.log(colSpans);
+                if (pResult.subGroupNumber >= maxGroupNumb || groupColSpan <= 0) {
+                    // если максимальное кол-во подгруппы для группы достигнуто
+                    // или место для записи уроков в группе закончилось - переходим к ледующей группе
+                    data.sGroupColSpan = eGroupColSpan;
+                    break;
+                }
+            }
+            return lessonsForGroup;
+        }
+
         return result;
     };
 
+    this.groupsAndLessonsProcess = function (maxGroupNumb, colSpans, leftGroupSolSpan, lesson) {
+        const DEBUG_LOGS = false;
+
+        const sGroupColSpan = colSpans.sGroupColSpan;
+        const eGroupColSpan = colSpans.eGroupColSpan;
+        const sLessonColSpan = colSpans.sLessonColSpan;
+        const eLessonColSpan = colSpans.eLessonColSpan;
+
+        const result = {
+            lessonTaken: false, // использовали ли постностью текущий урок
+            subGroupNumber: 0, // количество погдгрупп для текущей группы
+            lesson: null, // устанавливается, если текущий урок защитан для группы
+            leftGroupSolSpan: leftGroupSolSpan // оставшееся свободное пространство для данной группы
+        };
+
+        if (sGroupColSpan === sLessonColSpan || eGroupColSpan === eLessonColSpan) {
+            if (sGroupColSpan === sLessonColSpan && eGroupColSpan === eLessonColSpan) {
+                // г
+                result.lessonTaken = true;
+                result.leftGroupSolSpan = 0;
+                result.lesson = lesson;
+                if (DEBUG_LOGS) console.log('g');
+            } else if (sGroupColSpan === sLessonColSpan) {
+                if (eGroupColSpan > eLessonColSpan) {
+                    // д
+                    result.lessonTaken = true;
+                    result.leftGroupSolSpan = result.leftGroupSolSpan - (eLessonColSpan - sLessonColSpan);
+                    result.subGroupNumber++;
+                    result.lesson = lesson;
+                    if (DEBUG_LOGS) console.log('d');
+                } else {
+                    // б1
+                    result.leftGroupSolSpan = 0;
+                    result.lesson = lesson;
+                    if (DEBUG_LOGS) console.log('b1');
+                }
+            } else if (eGroupColSpan === eLessonColSpan) {
+                // е или а1
+                result.lessonTaken = true;
+                result.leftGroupSolSpan = 0;
+                result.lesson = lesson;
+                if (DEBUG_LOGS) console.log('e - a1');
+            }
+        } else {
+            if (sGroupColSpan > sLessonColSpan && eGroupColSpan < eLessonColSpan) {
+                //в1
+                result.leftGroupSolSpan = 0;
+                result.lesson = lesson;
+                if (DEBUG_LOGS) console.log('v1');
+            } else {
+                if (sGroupColSpan < sLessonColSpan && eLessonColSpan < eGroupColSpan) {
+                    // в
+                    result.lessonTaken = true;
+                    result.leftGroupSolSpan = result.leftGroupSolSpan - (eLessonColSpan - sLessonColSpan);
+                    result.subGroupNumber++;
+                    result.lesson = lesson;
+                    if (DEBUG_LOGS) console.log('v');
+                } else if (eGroupColSpan > eLessonColSpan) {
+                    // а
+                    if (DEBUG_LOGS) console.log('a');
+                    if (self.allowOverBorders(maxGroupNumb, sGroupColSpan, eGroupColSpan, sLessonColSpan, eLessonColSpan)) {
+                        result.lesson = lesson;
+                        if (DEBUG_LOGS) console.log('a-take');
+                    }
+                    result.lessonTaken = true;
+                    result.leftGroupSolSpan = result.leftGroupSolSpan - (eLessonColSpan - sGroupColSpan);
+                } else {
+                    // б
+                    if (DEBUG_LOGS) console.log('b');
+                    if (self.allowOverBorders(maxGroupNumb, sGroupColSpan, eGroupColSpan, sLessonColSpan, eLessonColSpan)) {
+                        result.lesson = lesson;
+                        result.subGroupNumber++;
+                        if (DEBUG_LOGS) console.log('b-take');
+                    }
+                    result.leftGroupSolSpan = result.leftGroupSolSpan - (eLessonColSpan - sGroupColSpan);
+                }
+            }
+        }
+        return result;
+    };
 
 };
