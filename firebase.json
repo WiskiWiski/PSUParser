@@ -1,0 +1,6 @@
+{
+  "ignore": [
+    "./functions/local_index.js",
+    "./functions/fits/"
+  ]
+}

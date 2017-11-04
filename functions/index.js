@@ -17,7 +17,7 @@ exports.psu = functions.https.onRequest((req, res) => {
             if (req.body.action === 'show') {
                 res.status(200).end(utils.tableStyle + '\n' + req.body.html);
             } else {
-                parser.parse(req, res);
+                parser.start(req, res);
             }
         }
     });

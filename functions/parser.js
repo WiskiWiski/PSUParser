@@ -32,8 +32,6 @@ exports.start = function (req, res) {
     const groups = parserPackage.getGroups();
     const dayList = parserPackage.getRows();
 
-    console.log('dayList: ' + dayList.length);
-
     const finalJson = {};
 
     /*

@@ -108,7 +108,7 @@ crashlytics.properties
 crashlytics-build.properties
 fabric.properties
 
-node_modules/
+functions/node_modules/
 database.js
 package.json
-fits/
+functions/fits/
