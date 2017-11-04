@@ -26,4 +26,4 @@ exports.WEEK_TITLE_WHITE = 'white';
 
 
 exports.CONSOLE_LOGS_DEBUG_ENABLE = false;
-exports.CONSOLE_LOGS_ENABLE = true;
+exports.CONSOLE_LOGS_ENABLE = false;

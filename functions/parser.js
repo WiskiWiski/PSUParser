@@ -1,6 +1,6 @@
 const cheerio = require('cheerio');
 
-const loger = require('./logs/loger.js');
+const loger = require('./loger/loger.js');
 const fit_p = require('./parsers/fit_p.js');
 const pref = require('./preferences.js');
 const utils = require('./p_utils.js');
@@ -8,10 +8,10 @@ const database = require('./database.js');
 
 let parserPackage;
 
-function getSpecificParserPackage(fac, course, html, loger) {
+function getSpecificParserPackage(fac, course, sgpg, html, loger) {
     switch (fac) {
         case fit_p.tag:
-            return new fit_p.FitParser(course, html, loger);
+            return new fit_p.FitParser(course, sgpg, html, loger);
         default:
             console.warn('Unknown faculty.');
     }
@@ -24,10 +24,11 @@ exports.start = function (req, res) {
     const html = cheerio.load(req.body.html, {decodeEntities: false});
     const course = req.body.course;
     const fac = req.body.fac;
+    const sgpg = req.body.sgpg;
 
     const myLoger = new loger.Loger();
 
-    parserPackage = getSpecificParserPackage(fac, course, html, myLoger);
+    parserPackage = getSpecificParserPackage(fac, course, sgpg, html, myLoger);
 
     const groups = parserPackage.getGroups();
     const dayList = parserPackage.getRows();
@@ -59,9 +60,9 @@ exports.start = function (req, res) {
     myLoger.printLogs(true, loger.LT_MSG);
 
     var endTime = new Date().getTime();
-    console.log("The encryption/decryption took: " + (endTime - startTime) + "ms.");
+    console.log("The analyze took: " + (endTime - startTime) + "ms.");
 
-    res.status(200).end(myLoger.logsToString(false, loger.LT_MSG, true));
+    res.status(200).end(JSON.stringify(myLoger.logsToJSONList(loger.LT_MSG)));
 };
 
 function saveLGRowToJson(json, row, dayIndex, rowIndex, time) {

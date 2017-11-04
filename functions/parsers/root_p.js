@@ -1,5 +1,5 @@
 /* root parser */
-const logerObjects = require('../logs/lobjects.js');
+const logerObjects = require('../loger/lobjects.js');
 const pref = require('../preferences.js');
 const utils = require('../p_utils.js');
 
@@ -9,7 +9,7 @@ const ROW_TYPE_GROUP_ROW = 'group_row';
 const ROW_TYPE_EMPTY_ROW = 'empty_row';
 
 
-exports.RootParser = function RootParser(course, html, loger) {
+exports.RootParser = function RootParser(course, maxGroupNumb, html, loger) {
     const self = this;
 
     this.getScheduleTable = function (html) {
@@ -66,6 +66,8 @@ exports.RootParser = function RootParser(course, html, loger) {
             const logMsg = new logerObjects.LogMessage();
             logMsg.setMessage('Groups row has not found!');
             logMsg.setErrorStatus();
+            logMsg.setDisplayText('Не удалось распознать строку с группами. ' +
+                'Сверьтесь с пунктов 1. и проверьте правильность офорления таблицы.');
             logMsg.setCode(logerObjects.MSG_CODE_GROUPS_ROW_NOT_FOUND);
             loger.log(logMsg);
         }
@@ -320,7 +322,7 @@ exports.RootParser = function RootParser(course, html, loger) {
     };
 
     // Возвращает объект содержащий строку А и B(см. result)
-    this.parseRow = function (aRowIndex) {
+    this.parseRow = function (aRowIndex, weekDayIndex) {
         // Результирующий объект:
         // aSubRow & bSubRow содержат объекты cell: colSpan, element, text
         const row = {
@@ -378,13 +380,27 @@ exports.RootParser = function RootParser(course, html, loger) {
 
                             const rowSpan = parseInt(timeRow.children(elem).attr("rowspan"));
                             if (!isNaN(rowSpan) && rowSpan > 1) {
-                                // Если ячейка строки А занимает строку B (rowspan = 2) заполняем B1
+                                if (rowSpan > 2 || (rowSpan > 1 && !rowsInfo.hasBRow)) {
+                                    // ячека занимет более 2 строк
+                                    const logMsg = new logerObjects.LogMessage();
+                                    logMsg.setErrorStatus();
+                                    logMsg.setCode(logerObjects.MSG_CODE_LESSONS_ROWSPAN_TOO_BIG);
+                                    const weekDay = utils.getDayByIndex(weekDayIndex);
+                                    logMsg.setMessage('[' + weekDay + ', ' + row.time + ', ' + (k + 1) +
+                                        ' lesson cell] Row has B-subgrow(' + rowsInfo.hasBRow + ') and lessons rowSpan=' + rowSpan);
+                                    logMsg.setDisplayText('[' + weekDay + ', ' + row.time + ', ' + (k + 1) +
+                                        ' ячейка с предметом]: Проверьте правильность оформления ячейки предмета в строке - см. п.3');
 
-                                const greenCell = Object.assign({}, cell); // копирование ячейки
-                                rowB1.push({
-                                    cell: greenCell,
-                                    index: k
-                                });
+                                    loger.log(logMsg);
+                                } else {
+                                    // Если ячейка строки А занимает строку B (rowspan = 2) заполняем B1
+
+                                    const greenCell = Object.assign({}, cell); // копирование ячейки
+                                    rowB1.push({
+                                        cell: greenCell,
+                                        index: k
+                                    });
+                                }
                             }
 
                         } else {
@@ -467,13 +483,10 @@ exports.RootParser = function RootParser(course, html, loger) {
                 // если строка с расписанием
                 // то сохраняем строку
 
-                const row = self.parseRow(k);
+                const row = self.parseRow(k, days.length);
 
                 if (row === undefined) {
-                    const logMsg = new logerObjects.LogMessage();
-                    logMsg.setMessage('Row is undefined on ' + k + ' row!');
-                    logMsg.setErrorStatus();
-                    logMsg.setCode(logerObjects.MSG_CODE_UNDEFINED_LESSONS_ROW);
+                    // строка пустая
                 } else {
                     dayRows.push(row);
                 }
@@ -501,7 +514,9 @@ exports.RootParser = function RootParser(course, html, loger) {
             const logMsg = new logerObjects.LogMessage();
             logMsg.setWarningStatus();
             logMsg.setCode(logerObjects.MSG_CODE_BAD_DAY_OR_DAY_LESSONS_ROWSPAN);
-            logMsg.setMessage('Pay attention rowSpan for ' + utils.getDayByIndex(dayRows.length - 1).toLowerCase()
+            const weekDay = utils.getDayByIndex(dayRows.length - 1);
+            logMsg.setDisplayText("Проверьте правильность оформления строк расписания для " + weekDay + ". Смотрите пункт 2.");
+            logMsg.setMessage('Pay attention rowSpan for ' + weekDay.toLowerCase()
                 + ' - ' + dayRowSpan + '; but lessons rowSpan sum - ' + rowRowSpanSum);
             loger.log(logMsg);
         }
@@ -559,15 +574,20 @@ exports.RootParser = function RootParser(course, html, loger) {
             const subRowColSpan = self.calculateCellsColSpan(subRow);
             if (groupsColSpan !== subRowColSpan) {
                 const logMsg = new logerObjects.LogMessage();
+                const weekDay = utils.getDayByIndex(dayIndex);
+
                 logMsg.setMessage('Lessons colspan not match with groups colspan: ' + subRowColSpan
-                    + ' vs ' + groupsColSpan + ' [' + utils.getDayByIndex(dayIndex) + ' at ' + row.time + ', '
+                    + ' vs ' + groupsColSpan + ' [' + weekDay + ' at ' + row.time + ', '
                     + weekColorTitle.toLowerCase() + ' week]');
+                logMsg.setDisplayText('[' + weekColorTitle.toLowerCase() + ', ' + weekDay + ', '
+                    + row.time + ']: Границы строки не совпадают с грацицами групп. ' +
+                    'Выполните пункт 4. и проверьте правильность соответствия колонок расписания их группам.');
                 logMsg.setWarningStatus();
                 logMsg.setCode(logerObjects.MSG_CODE_COLSPAN_LESSON_NOT_MATCH_GROUPS);
                 loger.log(logMsg);
             }
 
-            const linked = self.linkLessonsGroupsForSubRow(subRow, groups);
+            const linked = self.linkLessonsGroupsForSubRow(maxGroupNumb, subRow, groups);
             result[weekColorTitle] = linked;
 
             if (pref.CONSOLE_LOGS_ENABLE) {

@@ -17,7 +17,7 @@ const port = 3000;
 
 function autostart() {
     // для локального запуска
-    const offLineCourse = 3;
+    const offLineCourse = 4;
     const htmlStr = fs.readFileSync('./fits/fit-' + offLineCourse + '.html');
     const html = cheerio.load(htmlStr, {decodeEntities: false});
 
@@ -25,7 +25,8 @@ function autostart() {
         body:{
             html: html.html(),
             course: offLineCourse,
-            fac: 'fit'
+            fac: 'fit',
+            sgpg: 2 // subgroups per group
         }
     };
 
