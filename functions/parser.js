@@ -6,9 +6,11 @@ const pref = require('./preferences.js');
 const utils = require('./p_utils.js');
 const database = require('./database.js');
 
-let parserPackage;
+let course;
+let fac;
+let sgpg;
 
-function getSpecificParserPackage(fac, course, sgpg, html, loger) {
+function getSpecificParserPackage(html, loger) {
     switch (fac) {
         case fit_p.tag:
             return new fit_p.FitParser(course, sgpg, html, loger);
@@ -22,13 +24,13 @@ exports.start = function (req, res) {
     var startTime = new Date().getTime();
 
     const html = cheerio.load(req.body.html, {decodeEntities: false});
-    const course = req.body.course;
-    const fac = req.body.fac;
-    const sgpg = req.body.sgpg;
+    course = req.body.course;
+    fac = req.body.fac;
+    sgpg = req.body.sgpg;
 
     const myLoger = new loger.Loger();
 
-    parserPackage = getSpecificParserPackage(fac, course, sgpg, html, myLoger);
+    const parserPackage = getSpecificParserPackage(html, myLoger);
 
     const groups = parserPackage.getGroups();
     const dayList = parserPackage.getRows();
@@ -73,7 +75,7 @@ function saveLGRowToJson(json, row, dayIndex, rowIndex, time) {
             const len = groupLessons.lessons.length;
 
             // если массив lessons содержит только одну подгруппу, сохраняем её же для других
-            for (let subGroupN = 0; subGroupN < len || (len === 1 && subGroupN < parserPackage.MAX_SUB_GROUPS_NUMB); subGroupN++) {
+            for (let subGroupN = 0; subGroupN < len || (len === 1 && subGroupN < sgpg); subGroupN++) {
                 const subGroupLesson = subGroupN >= len ? groupLessons.lessons[0] : groupLessons.lessons[subGroupN];
 
                 const val = {
@@ -83,7 +85,7 @@ function saveLGRowToJson(json, row, dayIndex, rowIndex, time) {
                 };
                 const jsonPath = [color, groupName, subGroupN + 1, dayIndex + 1, rowIndex + 1];
                 pushToJson(json, val, jsonPath);
-            };
+            }
         });
     }
 
