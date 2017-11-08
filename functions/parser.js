@@ -56,7 +56,9 @@ exports.start = function (req, res) {
         });
     });
 
-    database.save(fac, course, finalJson);
+
+    //database.save(fac, course, finalJson);
+    database.save('logs', '', myLoger.logsToJSONList(loger.LT_MSG));
     myLoger.printLogs(true, loger.LT_MSG);
 
     var endTime = new Date().getTime();

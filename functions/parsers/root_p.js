@@ -29,10 +29,13 @@ exports.RootParser = function RootParser(course, maxGroupNumb, html, loger) {
             const rowCount = scheduleTable.children('tr').length;
             for (let k = 0; k < 6 && k < rowCount; k++) {
                 // Крайне маловероятно, что строка с группами будет ниже 6-ого ряда
+
+                loger.logPos.rowIndex = k;
                 if (self.getRowInfo(k).type === ROW_TYPE_GROUP_ROW) {
                     return k
                 }
             }
+            loger.logPos.rowIndex = 0;
             return -1;
         }
 
@@ -109,12 +112,15 @@ exports.RootParser = function RootParser(course, maxGroupNumb, html, loger) {
         for (let i = 0; i < 1 || (hasGreen && i < 2); i++) {
             timeRow = scheduleTable.children('tr').eq(aRowIndex + i);
             if (i === 0) {
+                loger.logPos.rowWeekColor = pref.WEEK_TITLE_WHITE;
+                loger.logPos.rowIndex = aRowIndex;
                 subRow = SUBROW_A;
                 row = result.aSubRow;
             } else {
+                loger.logPos.rowWeekColor = pref.WEEK_TITLE_GREEN;
+                loger.logPos.rowIndex = aRowIndex + 1;
                 subRow = SUBROW_B;
                 row = result.bSubRow;
-
             }
             let skipColonsN = 0;
 
@@ -124,6 +130,7 @@ exports.RootParser = function RootParser(course, maxGroupNumb, html, loger) {
                 if (forEachIsFinished) {
                     return;
                 }
+                loger.logPos.cellIndex = k;
 
 
                 // проверяем, не содержит ли текущий столбце день недели или время
@@ -170,6 +177,8 @@ exports.RootParser = function RootParser(course, maxGroupNumb, html, loger) {
                             result.type = ROW_TYPE_TIME_ROW;
                             // TODO : разделить 9.0010.20 на два времени
                             result.time = cellText.replace('\n', ' ');
+
+                            loger.logPos.rowTime = result.time;
 
                             if (cellRowSpan === 2) {
                                 hasGreen = true;
@@ -354,9 +363,13 @@ exports.RootParser = function RootParser(course, maxGroupNumb, html, loger) {
                 // Цикл для обработки первичной и вторичной строки
                 for (let i = 0; i < 1 || (rowsInfo.hasBRow && i < 2); i++) {
                     if (i === 0) {
+                        loger.logPos.rowIndex = aRowIndex;
+                        loger.logPos.rowWeekColor = pref.WEEK_TITLE_WHITE;
                         subRow = rowsInfo.aSubRow;
                         timeRow = scheduleTable.children('tr').eq(aRowIndex);
                     } else {
+                        loger.logPos.rowIndex = aRowIndex + 1;
+                        loger.logPos.rowWeekColor = pref.WEEK_TITLE_GREEN;
                         subRow = rowsInfo.bSubRow;
                         timeRow = scheduleTable.children('tr').eq(aRowIndex + 1);
                     }
@@ -368,6 +381,7 @@ exports.RootParser = function RootParser(course, maxGroupNumb, html, loger) {
                         if (k < subRow.skipColonsN) {
                             return;
                         } else {
+                            loger.logPos.cellIndex = k;
                             k = k - subRow.skipColonsN;
                         }
 
@@ -515,6 +529,7 @@ exports.RootParser = function RootParser(course, maxGroupNumb, html, loger) {
             logMsg.setWarningStatus();
             logMsg.setCode(logerObjects.MSG_CODE_BAD_DAY_OR_DAY_LESSONS_ROWSPAN);
             const weekDay = utils.getDayByIndex(dayRows.length - 1);
+            loger.logPos.rowWeekDay = weekDay;
             logMsg.setDisplayText("Проверьте правильность оформления строк расписания для " + weekDay + ". Смотрите пункт 2.");
             logMsg.setMessage('Pay attention rowSpan for ' + weekDay.toLowerCase()
                 + ' - ' + dayRowSpan + '; but lessons rowSpan sum - ' + rowRowSpanSum);
@@ -538,6 +553,8 @@ exports.RootParser = function RootParser(course, maxGroupNumb, html, loger) {
         // row - объект из parseRow
         // groups - массив ячерек(cell) групп
 
+        loger.logPos.rowWeekDay = utils.getDayByIndex(dayIndex);
+
         if (row === undefined) {
             return {};
         }
@@ -554,6 +571,8 @@ exports.RootParser = function RootParser(course, maxGroupNumb, html, loger) {
 
             if (k === 1) {
                 subRow = row.aSubRow;
+                loger.logPos.rowTime = row.time;
+                loger.logPos.rowWeekColor = pref.WEEK_TITLE_WHITE;
                 weekColorTitle = pref.WEEK_TITLE_WHITE;
                 if (pref.CONSOLE_LOGS_ENABLE) {
                     bgWeekColor = pref.BG_COLOR_WHITE;
@@ -562,6 +581,7 @@ exports.RootParser = function RootParser(course, maxGroupNumb, html, loger) {
                         "\n================ TIME: %s ================" + pref.COLORS_DEFAULT, row.time);
                 }
             } else {
+                loger.logPos.rowWeekColor = pref.WEEK_TITLE_GREEN;
                 weekColorTitle = pref.WEEK_TITLE_GREEN;
                 subRow = row.bSubRow;
                 if (pref.CONSOLE_LOGS_ENABLE) {

@@ -18,8 +18,34 @@ exports.MSG_CODE_UNDEFINED_LESSONS_ROW = MSG_CODE_UNDEFINED_LESSONS_ROW = 1036;
 exports.MSG_CODE_BAD_DAY_OR_DAY_LESSONS_ROWSPAN = MSG_CODE_BAD_DAY_OR_DAY_LESSONS_ROWSPAN = 1037;
 exports.MSG_CODE_LESSONS_ROWSPAN_TOO_BIG = MSG_CODE_LESSONS_ROWSPAN_TOO_BIG = 1038;
 
+const logObj = this;
+
+
+exports.LogPosition = function LogPosition(pos) {
+    const self = this;
+
+    if (pos !== undefined){
+        self.rowIndex = pos.rowIndex;
+        self.cellIndex = pos.cellIndex;
+        self.rowWeekColor = pos.rowWeekColor;
+        self.rowWeekDay = pos.rowWeekDay;
+        self.rowTime = pos.rowTime;
+    } else {
+        self.rowIndex = 0;
+        self.cellIndex = 0;
+        self.rowWeekColor = '';
+        self.rowWeekDay = '';
+        self.rowTime = '';
+    }
+
+    self.when = function () {
+        return '[' + self.rowIndex + '] c:' + self.rowWeekColor + ' d:' + self.rowWeekDay + ' t:' + self.rowTime;
+    };
+};
 
 exports.LogProgress = function LogProgress() {
+    this.logPos = new logObj.LogPosition();
+
     let message; // техническая ошибка
     let displayText; // адаптированный тект
     let percent;
@@ -80,6 +106,7 @@ exports.LogProgress = function LogProgress() {
 
     this.toJSON = function () {
         return {
+            when: this.logPos.when(),
             stage: status,
             percent: percent,
             message: message || '',
@@ -91,6 +118,8 @@ exports.LogProgress = function LogProgress() {
 
 
 exports.LogMessage = function LogMessage() {
+    this.logPos = new logObj.LogPosition();
+
     let status = MSG_STATUS_NONE;
     let message; // техническая ошибка
     let displayText; // адаптированный тект
@@ -174,6 +203,7 @@ exports.LogMessage = function LogMessage() {
 
     this.toJSON = function () {
         return {
+            when: this.logPos.when(),
             status: status,
             code: code,
             message: message || '',

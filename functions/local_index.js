@@ -13,7 +13,7 @@ const app = express(); // для запуска сервера
 const port = 3000;
 
 
-//autostart();
+autostart();
 
 function autostart() {
     // для локального запуска

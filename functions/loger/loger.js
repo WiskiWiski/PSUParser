@@ -7,15 +7,18 @@ exports.LT_PROGRESS = LT_PROGRESS = 'lt_progress';
 
 exports.Loger = function Loger() {
     const self = this;
+    this.logPos = new lobjs.LogPosition();
     this.logs = [];
 
     this.log = function (logObj) {
         if (logObj instanceof lobjs.LogProgress) {
+            logObj.logPos = new lobjs.LogPosition(self.logPos);
             self.logs.push({
                 ltType: LT_PROGRESS,
                 data: logObj
             });
         } else if (logObj instanceof lobjs.LogMessage) {
+            logObj.logPos = new lobjs.LogPosition(self.logPos);
             self.logs.push({
                 ltType: LT_MSG,
                 data: logObj
