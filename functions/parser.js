@@ -33,7 +33,7 @@ exports.start = function (req, res) {
     const parserPackage = getSpecificParserPackage(html, myLoger);
 
     const groups = parserPackage.getGroups();
-    const dayList = parserPackage.getRows();
+    const dayList = parserPackage.getTimeRows();
 
     const finalJson = {};
 
