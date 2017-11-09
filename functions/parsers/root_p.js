@@ -4,9 +4,10 @@ const pref = require('../preferences.js');
 const utils = require('../p_utils.js');
 
 const ROW_TYPE_NONE = 'none';
-const ROW_TYPE_TIME_ROW = 'time_row';
+const ROW_TYPE_SIMPLE_TIME_ROW = 'simple_time_row'; // для строк расписания без ячейки дня
+const ROW_TYPE_EXTENDED_TIME_ROW = 'extended_time_row'; // для строк расписания с ячейкой дня
 const ROW_TYPE_GROUP_ROW = 'group_row';
-const ROW_TYPE_EMPTY_ROW = 'empty_row';
+const ROW_TYPE_UNKNOWN_ROW = 'empty_row';
 
 
 exports.RootParser = function RootParser(course, maxGroupNumb, html, loger) {
@@ -77,141 +78,123 @@ exports.RootParser = function RootParser(course, maxGroupNumb, html, loger) {
         return groups;
     };
 
-    this.getRowInfo = function (aRowIndex) {
-        /*
-            Поиск информации о строка подстроках в таблице расписания по индексу А-строки - aRowIndex
-            Возвращает структуру типа result (см. ниже)
-         */
+    this.getRowInfo = function (htmlARowIndex) {
+        // Поиск информации о строка подстроках в таблице расписания по индексу А-строки - htmlARowIndex
+        // Возвращает структуру типа result (см. ниже)
 
         const SUBROW_A = 'a';
         const SUBROW_B = 'b';
 
         let result = {
-            day: null,
             hasBRow: false,
             type: ROW_TYPE_NONE,
-            time: null,
+            data: {},
             aSubRow: {
-                skipColonsN: 0,
-                errors: null,
-                cellRowSpans: [],
-
+                skipColonsN: 0
             },
             bSubRow: {
-                skipColonsN: 0,
-                errors: null
+                skipColonsN: 0
             },
         };
-
-        let hasGreen = false;
-        let timeRow = scheduleTable.children('tr').eq(aRowIndex);
 
         let subRow;
         let row;
 
-        for (let i = 0; i < 1 || (hasGreen && i < 2); i++) {
-            timeRow = scheduleTable.children('tr').eq(aRowIndex + i);
+        for (let i = 0; i < 1 || (result.hasBRow && i < 2); i++) {
+            const htmlRow = scheduleTable.children('tr').eq(htmlARowIndex + i);
             if (i === 0) {
                 loger.logPos.rowWeekColor = pref.WEEK_TITLE_WHITE;
-                loger.logPos.rowIndex = aRowIndex;
+                loger.logPos.rowIndex = htmlARowIndex;
                 subRow = SUBROW_A;
                 row = result.aSubRow;
             } else {
                 loger.logPos.rowWeekColor = pref.WEEK_TITLE_GREEN;
-                loger.logPos.rowIndex = aRowIndex + 1;
+                loger.logPos.rowIndex = htmlARowIndex + 1;
                 subRow = SUBROW_B;
                 row = result.bSubRow;
             }
-            let skipColonsN = 0;
 
-
-            let forEachIsFinished = false;
-            timeRow.children('td').each(function (k, elem) {
-                if (forEachIsFinished) {
+            let pCellHeight = -1;
+            let forEachIsFinished = false; // устанавливать в true, когда тип строки определён
+            htmlRow.children('td').each(function (k, elem) {
+                if (result.hasBRow) {
+                    // проверяем все ячейки для обнаружения строки-Б
                     return;
                 }
                 loger.logPos.cellIndex = k;
 
+                const cellHeight = getCellHeight(htmlRow.children(elem).first('td'));
+                const cellText = utils.htmlToText(htmlRow.children(elem).html());
 
-                // проверяем, не содержит ли текущий столбце день недели или время
-                let cellRowSpan = parseInt(timeRow.children(elem).first('td').attr('rowspan'));
-                if (isNaN(cellRowSpan)) {
-                    cellRowSpan = 1;
+
+                if (!result.hasBRow && cellHeight <= 2) {
+                    // <=2 для исключения ячеек с днем недели
+                    if (pCellHeight !== -1 && cellHeight !== pCellHeight) {
+                        result.hasBRow = true;
+                    }
+                    pCellHeight = cellHeight; // pCellHeight - высота предыдущей ячейки
                 }
 
-                const cellText = utils.htmlToText(timeRow.children(elem).html());
-
-                const isClockCell = cellText.toLowerCase().indexOf('часы') !== -1;
-
-                if (subRow === SUBROW_A) {
-                    //сохраняем RowSpan для ячек белой недели
-                    row.cellRowSpans.push(cellRowSpan);
-                }
-
-                if (isClockCell) {
-                    // Если строка с группами
+                if (isClockCell(cellText)) {
+                    // Если строка с группами и текущая ячейка "Часы"
 
                     forEachIsFinished = true;
                     result.type = ROW_TYPE_GROUP_ROW;
-                    skipColonsN++;
-                    if (cellRowSpan === 2) {
-                        hasGreen = true;
-                        result.hasBRow = true;
-                    }
+                    row.skipColonsN++;
 
-                } else {
-                    // Если любая другая строка
-                    if (subRow === SUBROW_A) {
-                        // Подстрока А
-                        if (cellRowSpan > 2) {
-                            // ячека с днём недели
-                            skipColonsN++;
-                            result.day = cellText;
-                            return;
+                } else if (subRow === SUBROW_A) {
+                    // Если любая другая ячейка : подстрока А
+                    if (isTimeCell(cellText)) {
+                        // ячейка со временем
+
+                        if (row.skipColonsN === 1) {
+                            // если перед обнаружением TimeCell была только одна ячейка,то данная строка содержит день недели
+                            const previewCellElement = htmlRow.children('td').eq(k - 1); // предыдущая ячейка
+                            result.data['day'] = utils.htmlToText(previewCellElement.html());
+                            result.type = ROW_TYPE_EXTENDED_TIME_ROW;
+                        } else {
+                            result.type = ROW_TYPE_SIMPLE_TIME_ROW;
                         }
+                        row.skipColonsN++;
 
-                        // проверка значения ячейки на содержание (1-9 или . или , или пробела)
-                        const isTimeCol = utils.REG_EXPRESSION_FOR_DATE_CELL.test(cellText);
-                        if (isTimeCol) {
-                            // ячейка со временем
-                            result.type = ROW_TYPE_TIME_ROW;
-                            // TODO : разделить 9.0010.20 на два времени
-                            result.time = cellText.replace('\n', ' ');
+                        result.data['time'] = cellText.replace('\n', ' ');
 
-                            loger.logPos.rowTime = result.time;
-
-                            if (cellRowSpan === 2) {
-                                hasGreen = true;
-                                result.hasBRow = true;
-                            }
-                            // forEachIsFinished=true для переходя на следующую подстроку,
-                            // т.к. после текущей ячейки точно будет расписание
-                            forEachIsFinished = true;
-
-                            skipColonsN++;
-                            return;
-                        }
-                    } else {
-                        // Подстрока B
-
+                        // forEachIsFinished=true для переходя на следующую подстроку,
+                        // т.к. после текущей ячейки точно будет расписание
+                        forEachIsFinished = true;
                     }
-
-                    if (result.type === ROW_TYPE_NONE) {
-                        // если еще не определили какого типа строка и ячейка пустая - прибовляем индекс для пропуска ячейки
-                        skipColonsN++;
-                    }
-
+                }
+                if (result.type === ROW_TYPE_NONE) {
+                    // если еще не определили какого типа строка и ячейка пустая - прибовляем индекс для пропуска ячейки
+                    row.skipColonsN++;
                 }
             });
 
+
             if (result.type === ROW_TYPE_NONE) {
-                // если после обработки строка А, тип остался неизвестен - строка пустая
-                result.type = ROW_TYPE_EMPTY_ROW;
+                // если после анализа всех ячееек html-строки, тип остался неизвестен - строка пустая
+                result.type = ROW_TYPE_UNKNOWN_ROW;
                 return result;
             }
-            row.skipColonsN = skipColonsN;
         }
         return result;
+
+        function getCellHeight(htmlElement) {
+            let cellHeight = parseInt(htmlElement.attr('rowspan'));
+            if (isNaN(cellHeight)) {
+                return 1;
+            }
+            return cellHeight;
+        }
+
+        function isTimeCell(cellText) {
+            // проверка значения ячейки на содержание (1-9 или . или , или пробела)
+            return utils.REG_EXPRESSION_FOR_DATE_CELL.test(cellText);
+        }
+
+        function isClockCell(cellText) {
+            return cellText.toLowerCase().indexOf('часы') !== -1;
+        }
     };
 
     // Метод сбора второстепенной строки расписани
@@ -331,29 +314,32 @@ exports.RootParser = function RootParser(course, maxGroupNumb, html, loger) {
     };
 
     // Возвращает объект содержащий строку А и B(см. result)
-    this.parseRow = function (aRowIndex, weekDayIndex) {
+    this.parseRow = function (aRowIndex, weekDayIndex, rowsInfo) {
         // Результирующий объект:
         // aSubRow & bSubRow содержат объекты cell: colSpan, element, text
-        const row = {
+        const timeRow = {
             hasBRow: false,
             aSubRow: [],
             bSubRow: [],
             time: null
         };
 
-        let timeRow = scheduleTable.children('tr').eq(aRowIndex);
+        let htmlTimeRow = scheduleTable.children('tr').eq(aRowIndex);
 
-        const rowsInfo = self.getRowInfo(aRowIndex);
+        if (rowsInfo === undefined || rowsInfo === null) {
+            rowsInfo = self.getRowInfo(aRowIndex);
+        }
 
         switch (rowsInfo.type) {
             case ROW_TYPE_NONE:
-            case ROW_TYPE_EMPTY_ROW:
-                // Пустая строка
-                return;
+            case ROW_TYPE_UNKNOWN_ROW:
+                // TODO: Неизвестный формат строки строка
+                return timeRow;
                 break;
             case ROW_TYPE_GROUP_ROW:
-            case ROW_TYPE_TIME_ROW:
-                row.time = rowsInfo.time;
+            case ROW_TYPE_EXTENDED_TIME_ROW:
+            case ROW_TYPE_SIMPLE_TIME_ROW:
+                timeRow.time = rowsInfo.data.time;
 
                 let rowA = [];
                 let rowB1 = [];
@@ -366,17 +352,17 @@ exports.RootParser = function RootParser(course, maxGroupNumb, html, loger) {
                         loger.logPos.rowIndex = aRowIndex;
                         loger.logPos.rowWeekColor = pref.WEEK_TITLE_WHITE;
                         subRow = rowsInfo.aSubRow;
-                        timeRow = scheduleTable.children('tr').eq(aRowIndex);
+                        htmlTimeRow = scheduleTable.children('tr').eq(aRowIndex);
                     } else {
                         loger.logPos.rowIndex = aRowIndex + 1;
                         loger.logPos.rowWeekColor = pref.WEEK_TITLE_GREEN;
                         subRow = rowsInfo.bSubRow;
-                        timeRow = scheduleTable.children('tr').eq(aRowIndex + 1);
+                        htmlTimeRow = scheduleTable.children('tr').eq(aRowIndex + 1);
                     }
                     const processRowA = i === 0;
 
 
-                    timeRow.children('td').each(function (k, elem) {
+                    htmlTimeRow.children('td').each(function (k, elem) {
                         // пропускаем ячейки и компенсируем индекс
                         if (k < subRow.skipColonsN) {
                             return;
@@ -386,13 +372,13 @@ exports.RootParser = function RootParser(course, maxGroupNumb, html, loger) {
                         }
 
                         // Объект ячейки (cm. buildCell() )
-                        const cell = self.buildCell(timeRow.children(elem));
+                        const cell = self.buildCell(htmlTimeRow.children(elem));
 
                         if (processRowA) {
                             // Обработка строки А
                             rowA.push(cell);
 
-                            const rowSpan = parseInt(timeRow.children(elem).attr("rowspan"));
+                            const rowSpan = parseInt(htmlTimeRow.children(elem).attr("rowspan"));
                             if (!isNaN(rowSpan) && rowSpan > 1) {
                                 if (rowSpan > 2 || (rowSpan > 1 && !rowsInfo.hasBRow)) {
                                     // ячека занимет более 2 строк
@@ -400,9 +386,9 @@ exports.RootParser = function RootParser(course, maxGroupNumb, html, loger) {
                                     logMsg.setErrorStatus();
                                     logMsg.setCode(logerObjects.MSG_CODE_LESSONS_ROWSPAN_TOO_BIG);
                                     const weekDay = utils.getDayByIndex(weekDayIndex);
-                                    logMsg.setMessage('[' + weekDay + ', ' + row.time + ', ' + (k + 1) +
+                                    logMsg.setMessage('[' + weekDay + ', ' + timeRow.time + ', ' + (k + 1) +
                                         ' lesson cell] Row has B-subgrow(' + rowsInfo.hasBRow + ') and lessons rowSpan=' + rowSpan);
-                                    logMsg.setDisplayText('[' + weekDay + ', ' + row.time + ', ' + (k + 1) +
+                                    logMsg.setDisplayText('[' + weekDay + ', ' + timeRow.time + ', ' + (k + 1) +
                                         ' ячейка с предметом]: Проверьте правильность оформления ячейки предмета в строке - см. п.3');
 
                                     loger.log(logMsg);
@@ -426,15 +412,15 @@ exports.RootParser = function RootParser(course, maxGroupNumb, html, loger) {
                         }
                     });
                 }
-                row.aSubRow = rowA; // сохраняем строку А
+                timeRow.aSubRow = rowA; // сохраняем строку А
 
                 if (rowsInfo.hasBRow) {
-                    row.hasBRow = true;
-                    self.buildCleanBRow(row, rowA, rowB1, rowB2); // строим строку Б
+                    timeRow.hasBRow = true;
+                    self.buildCleanBRow(timeRow, rowA, rowB1, rowB2); // строим строку Б
                 } else {
-                    row.bSubRow = rowA; // сохраняем строку А как B
+                    timeRow.bSubRow = rowA; // сохраняем строку А как B
                 }
-                return row;
+                return timeRow;
                 break;
         }
     };
@@ -460,80 +446,45 @@ exports.RootParser = function RootParser(course, maxGroupNumb, html, loger) {
     };
 
     // Возвращает двумерный массив со строками для каждого дня
-    this.getRows = function () {
+    this.getTimeRows = function () {
         // Возвращает двумерный массив
         // Массив данных для строки для каждого дня недели
 
         const DEBUG_LOGS = false;
 
-        const PROGRESS_STAGE = 2;
         const days = [];
-        const rowNumb = scheduleTable.children('tr').length; // количество строк таблицы
-
         let dayRows = [];
-        let dayRowSpan = 0;
-        let rowRowSpanSum = 0;
-        for (let k = 0; k < rowNumb && days.length <= 6; k++) {
-            const info = self.getRowInfo(k);
-            let rowRowSpan = 0;
-            if (DEBUG_LOGS) console.log('[%d]: %d/%d', k, dayRowSpan, rowRowSpanSum);
-            if (info.type === ROW_TYPE_TIME_ROW || info.type === ROW_TYPE_EMPTY_ROW) {
-                if (dayRowSpan === 0) {
-                    dayRowSpan = info.aSubRow.cellRowSpans[0]; // получаем RowSpan для дня
-                    rowRowSpan = info.aSubRow.cellRowSpans[1]; // получаем RowSpan для строки
-                } else {
-                    rowRowSpan = info.aSubRow.cellRowSpans[0]; // получаем RowSpan для строки
-                }
-            }
 
-            const logProg = new logerObjects.LogProgress();
-            logProg.setMessage('Checking row ' + (k + 1) + ' for lessons...');
-            logProg.setPercent((k + 1) * 100 / rowNumb);
-            logProg.setStage(PROGRESS_STAGE);
-            loger.log(logProg);
+        const htmlRowNumb = scheduleTable.children('tr').length; // количество строк html таблицы
 
-
-            if (info.type === ROW_TYPE_TIME_ROW) {
-                // если строка с расписанием
-                // то сохраняем строку
-
-                const row = self.parseRow(k, days.length);
-
-                if (row === undefined) {
-                    // строка пустая
-                } else {
-                    dayRows.push(row);
-                }
-
-            }
-            rowRowSpanSum += rowRowSpan;
-
-            if (dayRowSpan !== 0 && rowRowSpanSum >= dayRowSpan) {
-                // сохраняем строки текущего дня
+        for (let k = 0; k < htmlRowNumb && days.length <= 6; k++) {
+            const rowInfo = self.getRowInfo(k);
+            const rowType = rowInfo.type;
+            if (dayRows.length > 0 && rowType === ROW_TYPE_EXTENDED_TIME_ROW) {
                 days.push(dayRows);
                 dayRows = [];
-                rowRowSpanSum = 0;
-                dayRowSpan = 0;
+                if (DEBUG_LOGS) console.log('============DAY ' + (days.length + 1) + '============');
             }
 
-            if (info.hasBRow) {
-                k++; // пропускаем следующую строку, если после тукущей идет зелёная неделя
+
+            if (rowType === ROW_TYPE_SIMPLE_TIME_ROW ||
+                rowType === ROW_TYPE_EXTENDED_TIME_ROW ||
+                rowType === ROW_TYPE_UNKNOWN_ROW) {
+
+                const row = self.parseRow(k, days.length, rowInfo);
+                dayRows.push(row);
+
+                if (DEBUG_LOGS) console.log('[%d]: %s', k, (row));
+            }
+
+            if (rowInfo.hasBRow) {
+                k++;
             }
         }
-        if (dayRows.length > 0) {
-            // если по какой-то причине сумма RowSpan'ов строк последнего дня недели, не совпала с RowSpan'ом последнего дня недели
-            // записываем уже полученные дни
-            days.push(dayRows);
 
-            const logMsg = new logerObjects.LogMessage();
-            logMsg.setWarningStatus();
-            logMsg.setCode(logerObjects.MSG_CODE_BAD_DAY_OR_DAY_LESSONS_ROWSPAN);
-            const weekDay = utils.getDayByIndex(dayRows.length - 1);
-            loger.logPos.rowWeekDay = weekDay;
-            logMsg.setDisplayText("Проверьте правильность оформления строк расписания для " + weekDay + ". Смотрите пункт 2.");
-            logMsg.setMessage('Pay attention rowSpan for ' + weekDay.toLowerCase()
-                + ' - ' + dayRowSpan + '; but lessons rowSpan sum - ' + rowRowSpanSum);
-            loger.log(logMsg);
+        // для сохранения строк последнего дня
+        if (dayRows.length > 0) {
+            days.push(dayRows);
         }
 
         return days;

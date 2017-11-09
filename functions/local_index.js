@@ -17,7 +17,7 @@ autostart();
 
 function autostart() {
     // для локального запуска
-    const offLineCourse = 4;
+    const offLineCourse = 3;
     const htmlStr = fs.readFileSync('./fits/fit-' + offLineCourse + '.html');
     const html = cheerio.load(htmlStr, {decodeEntities: false});
 
