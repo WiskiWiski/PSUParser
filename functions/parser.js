@@ -1,6 +1,6 @@
 const cheerio = require('cheerio');
 
-const loger = require('./loger/loger.js');
+const loger = require('./loger.js');
 const fit_p = require('./parsers/fit_p.js');
 const pref = require('./preferences.js');
 const utils = require('./p_utils.js');
@@ -10,63 +10,86 @@ let course;
 let fac;
 let sgpg;
 
-function getSpecificParserPackage(html, loger) {
+function getSpecificParserPackage(html, mLoger) {
     switch (fac) {
         case fit_p.tag:
-            return new fit_p.FitParser(course, sgpg, html, loger);
+            return new fit_p.FitParser(course, sgpg, html, mLoger);
         default:
-            console.warn('Unknown faculty.');
+            throw Error('Unknown faculty.');
     }
 }
 
-
+// Основной метод анализа документа
 exports.start = function (req, res) {
-    var startTime = new Date().getTime();
+    const startTime = new Date().getTime();
 
     const html = cheerio.load(req.body.html, {decodeEntities: false});
     course = req.body.course;
     fac = req.body.fac;
-    sgpg = req.body.sgpg;
+    sgpg = req.body.sgpg; // Максимальное количество подгрупп в группе
 
-    const myLoger = new loger.Loger();
+    const mLoger = new loger.Loger();
+    const parserPackage = getSpecificParserPackage(html, mLoger);
 
-    const parserPackage = getSpecificParserPackage(html, myLoger);
+    try {
+        const groups = parserPackage.getGroups();
+        const dayList = parserPackage.getTimeRows();
 
-    const groups = parserPackage.getGroups();
-    const dayList = parserPackage.getTimeRows();
+        const finalJson = {};
 
-    const finalJson = {};
+        /*
+        const rowInfo = parserPackage.getRowInfo(19);
+        let rowData = parserPackage.parseRow(rowInfo);
+        const row = parserPackage.linkLessonsGroupsForRow(rowData, groups, 0);
+        //saveLGRowToJson(finalJson, row, 0, 1, rowData.time);
+        //console.log(JSON.stringify(finalJson));
+        return;
+        */
 
-    /*
-    let rowData = parserPackage.parseRow(47);
-    const row = parserPackage.linkLessonsGroupsForRow(rowData, groups, 0);
-    //saveLGRowToJson(finalJson, row, 0, 1, rowData.time);
-    //console.log(JSON.stringify(finalJson));
-    return;
-    */
+        dayList.forEach(function (dayRowsList, dayIndex) {
+            // dayRowsList - строки для текущего дня
 
-    dayList.forEach(function (dayRowsList, dayIndex) {
-        // dayRowsList - строки для текущего дня
+            if (pref.CONSOLE_LOGS_ENABLE) console.log(pref.STYLE_BRIGHT + pref.BG_COLOR_BLUE + pref.FG_COLOR_WHITE +
+                '\n\t\t\tDAY: ' + utils.getDayByIndex(dayIndex) + '\t\t\t\t' + pref.COLORS_DEFAULT);
 
-        if (pref.CONSOLE_LOGS_ENABLE) console.log(pref.STYLE_BRIGHT + pref.BG_COLOR_BLUE + pref.FG_COLOR_WHITE +
-            '\n\t\t\tDAY: ' + utils.getDayByIndex(dayIndex) + '\t\t\t\t' + pref.COLORS_DEFAULT);
+            mLoger.logPos.weekDayIndex = dayIndex;
 
-        dayRowsList.forEach(function (dayRow, rowIndex) {
-            // lessons and groups
-            const lAndG = parserPackage.linkLessonsGroupsForRow(dayRow, groups, dayIndex);
-            saveLGRowToJson(finalJson, lAndG, dayIndex, rowIndex, dayRow.time);
+            dayRowsList.forEach(function (dayRow, rowIndex) {
+                // lessons and groups
+                mLoger.logPos.rowTime = dayRow.time;
+                mLoger.logPos.lessonRowIndex = rowIndex;
+
+                const lAndG = parserPackage.linkLessonsGroupsForRow(dayRow, groups);
+                saveLGRowToJson(finalJson, lAndG, dayIndex, rowIndex, dayRow.time);
+            });
         });
-    });
+
+        database.save(fac, course, finalJson);
+    } catch (err) {
+        if (err.name === loger.NAME_LOG_ERROR) {
+            console.error('========= Processing aborted! =========');
+        } else {
+            throw err;
+        }
+    }
 
 
-    //database.save(fac, course, finalJson);
-    database.save('logs', '', myLoger.logsToJSONList(loger.LT_MSG));
-    myLoger.printLogs(true, loger.LT_MSG);
+    const jsonLogs = mLoger.logsToJSONList();
 
-    var endTime = new Date().getTime();
+    if (mLoger.errorNumber > 0) {
+        jsonLogs.push({
+            code: 1,
+            message: 'Processing aborted: fatal error! ' + mLoger.errorNumber,
+            displayText: 'Не удалось сохранить расписание: критическая ошибка'
+        });
+    }
+
+    mLoger.printLogs(true);
+    //database.save('logs', '', jsonLogs);
+
+    const endTime = new Date().getTime();
     console.log("The analyze took: " + (endTime - startTime) + "ms.");
-
-    res.status(200).end(JSON.stringify(myLoger.logsToJSONList(loger.LT_MSG)));
+    res.status(200).end(JSON.stringify(jsonLogs));
 };
 
 function saveLGRowToJson(json, row, dayIndex, rowIndex, time) {

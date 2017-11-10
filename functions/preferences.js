@@ -25,5 +25,4 @@ exports.WEEK_TITLE_GREEN = 'green';
 exports.WEEK_TITLE_WHITE = 'white';
 
 
-exports.CONSOLE_LOGS_DEBUG_ENABLE = false;
 exports.CONSOLE_LOGS_ENABLE = false;
