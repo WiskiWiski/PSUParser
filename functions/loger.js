@@ -4,6 +4,9 @@ const loger = this;
 
 const ABORT_ON_FATAL_ERROR = true;
 
+exports.SUB_ROW_TITLE_A = 'a';
+exports.SUB_ROW_TITLE_B = 'b';
+
 exports.NAME_LOG_ERROR = NAME_LOG_ERROR = 'LogError';
 
 exports.Loger = function Loger() {
@@ -11,9 +14,9 @@ exports.Loger = function Loger() {
     this.logPos = new LogPosition();
     this.logs = [];
 
-    this.msgNumber = 0;
-    this.warningNumber = 0;
-    this.errorNumber = 0;
+    let msgNumber = 0;
+    let warningNumber = 0;
+    let errorNumber = 0;
 
     this.log = function (logObj) {
         if (logObj instanceof loger.LogObject) {
@@ -22,13 +25,13 @@ exports.Loger = function Loger() {
 
             switch (Math.floor(logObj.getCode() / 1000)) {
                 case 1:
-                    self.msgNumber++;
+                    msgNumber++;
                     break;
                 case 2:
-                    self.warningNumber++;
+                    warningNumber++;
                     break;
                 case 3:
-                    self.errorNumber++;
+                    errorNumber++;
                     if (ABORT_ON_FATAL_ERROR) {
                         // кртическая ошибка - прерывание обработки
                         const error = new Error('Fatal processing error!');
@@ -40,6 +43,18 @@ exports.Loger = function Loger() {
         } else {
             throw  Error('Object to log must instance of LogObject!');
         }
+    };
+
+    this.getMsgNumber = function () {
+        return msgNumber;
+    };
+
+    this.getWarningNumber = function () {
+        return warningNumber;
+    };
+
+    this.getErrorNumber = function () {
+        return errorNumber;
     };
 
 
@@ -69,8 +84,8 @@ exports.LogObject = function LogObject() {
 
     this.toShow = []; // какие координаты отображать в логах
     /*
-        ri - htmlRowIndex
-        li - lessonRowIndex
+        ri - tableRowIndex
+        li - dayLessonIndex
         ci - cellIndex
         c - weekColor
         di - weekDayIndex
@@ -84,27 +99,35 @@ exports.LogObject = function LogObject() {
             return posJSON;
         }
 
-        if (self.toShow.includes('ri')) {
-            posJSON['htmlRowIndex'] = self.logPos.htmlRowIndex;
+        let val;
+
+        val = self.logPos.tableRowIndex;
+        if (self.toShow.includes('ri') && val !== -1) {
+            posJSON['tableRowIndex'] = self.logPos.tableRowIndex;
         }
 
-        if (self.toShow.includes('li')) {
-            posJSON['lessonRowIndex'] = self.logPos.lessonRowIndex;
+        val = self.logPos.dayLessonIndex;
+        if (self.toShow.includes('dl') && val !== -1) {
+            posJSON['dayLessonIndex'] = self.logPos.dayLessonIndex;
         }
 
-        if (self.toShow.includes('ci')) {
-            posJSON['htmlCellIndex'] = self.logPos.htmlCellIndex;
+        val = self.logPos.tableCellIndex;
+        if (self.toShow.includes('ci') && val !== -1) {
+            posJSON['tableCellIndex'] = self.logPos.tableCellIndex;
         }
 
-        if (self.toShow.includes('c')) {
-            posJSON['rowWeekColor'] = self.logPos.rowWeekColor;
+        val = self.logPos.subRow;
+        if (self.toShow.includes('sb') && val !== null) {
+            posJSON['subRow'] = self.logPos.subRow;
         }
 
-        if (self.toShow.includes('di')) {
+        val = self.logPos.weekDayIndex;
+        if (self.toShow.includes('di') && val !== -1) {
             posJSON['weekDayIndex'] = self.logPos.weekDayIndex;
         }
 
-        if (self.toShow.includes('t')) {
+        val = self.logPos.rowTime;
+        if (self.toShow.includes('t') && val !== null) {
             posJSON['rowTime'] = self.logPos.rowTime;
         }
         return posJSON;
@@ -192,23 +215,23 @@ function LogPosition(pos) {
     const self = this;
 
     if (pos !== undefined) {
-        self.htmlRowIndex = pos.htmlRowIndex;
-        self.lessonRowIndex = pos.lessonRowIndex;
-        self.htmlCellIndex = pos.htmlCellIndex;
-        self.rowWeekColor = pos.rowWeekColor;
+        self.tableRowIndex = pos.tableRowIndex;
+        self.dayLessonIndex = pos.dayLessonIndex;
+        self.tableCellIndex = pos.tableCellIndex;
+        self.subRow = pos.subRow;
         self.rowTime = pos.rowTime;
         self.weekDayIndex = pos.weekDayIndex;
     } else {
-        self.htmlRowIndex = -1;
-        self.htmlCellIndex = -1;
-        self.lessonRowIndex = -1; // индекст строки с уроков относительно текущего дня
-        self.rowWeekColor = null;
-        self.weekDayIndex = -1;
+        self.tableRowIndex = -1;
+        self.tableCellIndex = -1;
+        self.dayLessonIndex = -1; // индекс строки с уроков относительно текущего дня
+        self.subRow = null;
+        self.weekDayIndex = -1; // индекс дня недели
         self.rowTime = null;
     }
 
     self.when = function () {
-        return '[ri:' + self.htmlRowIndex + ' li:' + self.lessonRowIndex + ' ci:' + self.htmlCellIndex + '] c:' + self.rowWeekColor +
-            ' di:' + self.weekDayIndex + ' t:' + self.rowTime;
+        return '[ri:' + self.tableRowIndex + ' ci:' + self.tableCellIndex + ' li:' + self.dayLessonIndex +
+            ' di:' + self.weekDayIndex + ' t:\"' + self.rowTime + '\" sb:' + self.subRow + ']';
     };
 }

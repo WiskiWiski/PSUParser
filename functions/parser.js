@@ -13,7 +13,7 @@ let sgpg;
 function getSpecificParserPackage(html, mLoger) {
     switch (fac) {
         case fit_p.tag:
-            return new fit_p.FitParser(course, sgpg, html, mLoger);
+            return new fit_p.FitParser(mLoger, course, sgpg, html);
         default:
             throw Error('Unknown faculty.');
     }
@@ -38,9 +38,10 @@ exports.start = function (req, res) {
         const finalJson = {};
 
         /*
-        const rowInfo = parserPackage.getRowInfo(19);
-        let rowData = parserPackage.parseRow(rowInfo);
-        const row = parserPackage.linkLessonsGroupsForRow(rowData, groups, 0);
+        const rowInfo = parserPackage.getRowInfo(12);
+        let  clearDoubleTimeRow = parserPackage.getDoubleSimpleTimeRow(rowInfo);
+        const row = parserPackage.linkLessonsGroupsForRow(clearDoubleTimeRow, groups);
+        console.log(row['white'][2]);
         //saveLGRowToJson(finalJson, row, 0, 1, rowData.time);
         //console.log(JSON.stringify(finalJson));
         return;
@@ -57,7 +58,7 @@ exports.start = function (req, res) {
             dayRowsList.forEach(function (dayRow, rowIndex) {
                 // lessons and groups
                 mLoger.logPos.rowTime = dayRow.time;
-                mLoger.logPos.lessonRowIndex = rowIndex;
+                mLoger.logPos.dayLessonIndex = rowIndex;
 
                 const lAndG = parserPackage.linkLessonsGroupsForRow(dayRow, groups);
                 saveLGRowToJson(finalJson, lAndG, dayIndex, rowIndex, dayRow.time);
@@ -75,14 +76,6 @@ exports.start = function (req, res) {
 
 
     const jsonLogs = mLoger.logsToJSONList();
-
-    if (mLoger.errorNumber > 0) {
-        jsonLogs.push({
-            code: 1,
-            message: 'Processing aborted: fatal error! ' + mLoger.errorNumber,
-            displayText: 'Не удалось сохранить расписание: критическая ошибка'
-        });
-    }
 
     mLoger.printLogs(true);
     //database.save('logs', '', jsonLogs);
@@ -115,11 +108,11 @@ function saveLGRowToJson(json, row, dayIndex, rowIndex, time) {
     }
 
 
-    forColorRow(row[pref.WEEK_TITLE_WHITE], pref.WEEK_TITLE_WHITE);
-    if (row[pref.WEEK_TITLE_GREEN] === undefined) {
-        forColorRow(row[pref.WEEK_TITLE_WHITE], pref.WEEK_TITLE_GREEN);
+    forColorRow(row[loger.SUB_ROW_TITLE_A], loger.SUB_ROW_TITLE_A);
+    if (row[loger.SUB_ROW_TITLE_B] === undefined) {
+        forColorRow(row[loger.SUB_ROW_TITLE_A], loger.SUB_ROW_TITLE_B);
     } else {
-        forColorRow(row[pref.WEEK_TITLE_GREEN], pref.WEEK_TITLE_GREEN);
+        forColorRow(row[loger.SUB_ROW_TITLE_B], loger.SUB_ROW_TITLE_B);
     }
 
 }

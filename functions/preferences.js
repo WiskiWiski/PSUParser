@@ -19,10 +19,4 @@ exports.BG_COLOR_WHITE = '\x1b[47m';
 
 exports.COLORS_DEFAULT = '\x1b[0m';
 
-
-
-exports.WEEK_TITLE_GREEN = 'green';
-exports.WEEK_TITLE_WHITE = 'white';
-
-
 exports.CONSOLE_LOGS_ENABLE = false;
