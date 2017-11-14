@@ -97,8 +97,9 @@ function saveLGRowToJson(json, row, dayIndex, rowIndex, time) {
                 const subGroupLesson = subGroupN >= len ? groupLessons.lessons[0] : groupLessons.lessons[subGroupN];
 
                 const val = {
-                    cell_html: subGroupLesson.element.html(),
+                    cellHtml: subGroupLesson.element.html(),
                     lesson: subGroupLesson.text,
+                    cellLesson: subGroupLesson.cellLesson,
                     time: time
                 };
                 const jsonPath = [color, groupName, subGroupN + 1, dayIndex + 1, rowIndex + 1];
@@ -108,11 +109,11 @@ function saveLGRowToJson(json, row, dayIndex, rowIndex, time) {
     }
 
 
-    forColorRow(row[loger.SUB_ROW_TITLE_A], loger.SUB_ROW_TITLE_A);
+    forColorRow(row[loger.SUB_ROW_TITLE_A], 'white');
     if (row[loger.SUB_ROW_TITLE_B] === undefined) {
-        forColorRow(row[loger.SUB_ROW_TITLE_A], loger.SUB_ROW_TITLE_B);
+        forColorRow(row[loger.SUB_ROW_TITLE_A], 'green');
     } else {
-        forColorRow(row[loger.SUB_ROW_TITLE_B], loger.SUB_ROW_TITLE_B);
+        forColorRow(row[loger.SUB_ROW_TITLE_B], 'green');
     }
 
 }

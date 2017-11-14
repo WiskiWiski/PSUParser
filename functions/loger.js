@@ -14,7 +14,7 @@ exports.Loger = function Loger() {
     this.logPos = new LogPosition();
     this.logs = [];
 
-    let msgNumber = 0;
+    let infoNumber = 0;
     let warningNumber = 0;
     let errorNumber = 0;
 
@@ -25,7 +25,7 @@ exports.Loger = function Loger() {
 
             switch (Math.floor(logObj.getCode() / 1000)) {
                 case 1:
-                    msgNumber++;
+                    infoNumber++;
                     break;
                 case 2:
                     warningNumber++;
@@ -45,8 +45,8 @@ exports.Loger = function Loger() {
         }
     };
 
-    this.getMsgNumber = function () {
-        return msgNumber;
+    this.getInfoNumber = function () {
+        return infoNumber;
     };
 
     this.getWarningNumber = function () {
@@ -80,6 +80,7 @@ exports.LogObject = function LogObject() {
 
     let message; // техническая ошибка
     let displayText; // адаптированный тект
+    let payload; // дополнительная текстовая информация
     let code = -1;
 
     this.toShow = []; // какие координаты отображать в логах
@@ -169,6 +170,14 @@ exports.LogObject = function LogObject() {
         return code;
     };
 
+    this.setPayload = function (value) {
+        payload = value;
+    };
+
+    this.getPayload = function (value) {
+        return payload;
+    };
+
     this.toString = function (useColors) {
         let resStr;
         let statusStr;
@@ -176,8 +185,8 @@ exports.LogObject = function LogObject() {
 
         switch (Math.floor(code / 1000)) {
             case 1:
-                color = pref.COLORS_DEFAULT;
-                statusStr = 'MSG';
+                color = pref.FG_COLOR_CYAN;
+                statusStr = 'INFO';
                 break;
             case 2:
                 color = pref.FG_COLOR_ORAGE;
@@ -204,6 +213,7 @@ exports.LogObject = function LogObject() {
         return {
             when: buildPos(),
             code: code,
+            payload: payload,
             message: message || '',
             displayText: displayText || '',
         };
@@ -216,11 +226,11 @@ function LogPosition(pos) {
 
     if (pos !== undefined) {
         self.tableRowIndex = pos.tableRowIndex;
-        self.dayLessonIndex = pos.dayLessonIndex;
         self.tableCellIndex = pos.tableCellIndex;
+        self.dayLessonIndex = pos.dayLessonIndex;
         self.subRow = pos.subRow;
-        self.rowTime = pos.rowTime;
         self.weekDayIndex = pos.weekDayIndex;
+        self.rowTime = pos.rowTime;
     } else {
         self.tableRowIndex = -1;
         self.tableCellIndex = -1;
@@ -231,7 +241,7 @@ function LogPosition(pos) {
     }
 
     self.when = function () {
-        return '[ri:' + self.tableRowIndex + ' ci:' + self.tableCellIndex + ' li:' + self.dayLessonIndex +
+        return '[ri:' + self.tableRowIndex + ' ci:' + self.tableCellIndex + ' dl:' + self.dayLessonIndex +
             ' di:' + self.weekDayIndex + ' t:\"' + self.rowTime + '\" sb:' + self.subRow + ']';
     };
 }

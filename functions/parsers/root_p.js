@@ -2,6 +2,7 @@
 const loger = require('../loger.js');
 const pref = require('../preferences.js');
 const utils = require('../p_utils.js');
+const lessonParser = require('../p_lesson.js');
 
 const ROW_TYPE_NONE = 'none';
 const ROW_TYPE_SIMPLE_TIME_ROW = 'simple_time_row'; // для строк расписания без ячейки дня
@@ -263,7 +264,14 @@ function DoubleSimpleTimeRowBuilder(mLoger) {
         const time = sourceRow[0].text;
         mLoger.logPos.rowTime = time;
         result['time'] = time;
-        return sourceRow.slice(1);
+        const cells = sourceRow.slice(1);
+        parseLessonCellsArray(mLoger, 1, cells);
+        return cells;
+    };
+
+    this._buildBSubRow = function (result, sourceRow) {
+        parseLessonCellsArray(mLoger, 0, sourceRow);
+        return sourceRow;
     };
 
     this._getToShow = function () {
@@ -282,12 +290,35 @@ function DoubleExtendedTimeRowBuilder(mLoger) {
         mLoger.logPos.rowTime = time;
         result['time'] = time;
 
-        return sourceRow.slice(2);
+        const cells = sourceRow.slice(2);
+        parseLessonCellsArray(mLoger, 2, cells);
+        return cells;
+    };
+
+    this._buildBSubRow = function (result, sourceRow) {
+        parseLessonCellsArray(mLoger, 0, sourceRow);
+        return sourceRow;
     };
 
     this._getToShow = function () {
-        return ['ri', 't', 'sb', 'li', 'di'];
+        return ['ri', 't', 'sb', 'dl', 'di'];
     };
+}
+
+function parseLessonCellsArray(mLoger, skipped, cells) {
+    if (cells === undefined) {
+        return;
+    }
+    const toShow = ['t', 'ri', 'ci', 'dl', 'di', 'sb']; // какие данные записывать в логи при ошибках в parseCellContent()
+
+    cells.forEach(function (cell, i) {
+        mLoger.logPos.tableCellIndex = skipped + i;
+        let content = cell.element.html();
+        content = content.replace(/<\s*((br)|(p))\s*[\/]?>/gi, ' '); // замен <p> и <br> на пробел
+        content = content.replace(/<[^>]*>/g, ''); // очиствка от каких-либо html тегов
+        cell['cellLesson'] = lessonParser.parseCellContent(mLoger, content, toShow);
+    });
+
 }
 
 
@@ -329,20 +360,25 @@ exports.RootParser = function RootParser(mLoger, course, maxGroupNumb, html) {
         const doubleGroupRowBuilder = new DoubleGroupRowBuilder(mLoger, schedule);
 
         for (let groupsRowIndex = 0; groupsRowIndex < 6 && groupsRowIndex < rowNumber; groupsRowIndex++) {
-
+            mLoger.logPos.tableRowIndex = groupsRowIndex;
             const rowInfo = self.getRowInfo(groupsRowIndex);
             if (rowInfo.type === ROW_TYPE_GROUP_ROW) {
                 const clearDoubleGroupsRow = doubleGroupRowBuilder.build(rowInfo);
                 groups = clearDoubleGroupsRow.bSubRow.map(function (element) {
+                    if (pref.CONSOLE_LOGS_ENABLE) console.log('groups [width=%d] : %s', element.width, element.text);
+                    if (!isCorrectFirebaseKey(element.text)) {
+                        const logObj = new loger.LogObject();
+                        logObj.setCode(3002);
+                        logObj.toShow = ['ri'];
+                        logObj.setMessage('Ячейка группы содержит недопустимый символ или пустая: \'' + element.text + '\'');
+                        logObj.setDisplayText('Проверьте правильность оформления групп в таблице.');
+                        logObj.setPayload(element.text);
+                        mLoger.log(logObj);
+                    }
                     return element;
                 });
 
-                if (pref.CONSOLE_LOGS_ENABLE) {
-                    groups.forEach(function (el) {
-                        console.log('groups [col=%d] : %s', el.width, el.text);
-                    });
-                    console.log();
-                }
+                if (pref.CONSOLE_LOGS_ENABLE) console.log();
                 break;
             }
         }
@@ -357,6 +393,21 @@ exports.RootParser = function RootParser(mLoger, course, maxGroupNumb, html) {
         }
         return groups;
     };
+
+    function isCorrectFirebaseKey(key) {
+        if (key === undefined || key === null || key.trim() === '') {
+            return false;
+        }
+
+        const denySymbols = ['[', ']', '.', '/', '$', '#'];
+        denySymbols.forEach(function (s) {
+            if (key.includes(s)) {
+                return false;
+            }
+        });
+
+        return true;
+    }
 
     this.getRowInfo = function (rowIndex) {
         let resultType = {
@@ -406,7 +457,7 @@ exports.RootParser = function RootParser(mLoger, course, maxGroupNumb, html) {
             resultType.type = ROW_TYPE_EMPTY_ROW;
             const logObj = new loger.LogObject();
             logObj.setCode(2001);
-            logObj.toShow = ['ri', 'di', 'li'];
+            logObj.toShow = ['ri', 'di', 'dl'];
             logObj.setDisplayText('Найдена пустая строка');
             logObj.setMessage('Найдена пустая строка');
             mLoger.log(logObj);
@@ -416,7 +467,7 @@ exports.RootParser = function RootParser(mLoger, course, maxGroupNumb, html) {
 
             const logObj = new loger.LogObject();
             logObj.setCode(3004);
-            logObj.toShow = ['ri', 'di', 'li'];
+            logObj.toShow = ['ri', 'di', 'dl'];
             logObj.setDisplayText('Не удалось определить тип строки');
             logObj.setMessage('Не удалось определить тип строки');
             mLoger.log(logObj);
@@ -434,7 +485,7 @@ exports.RootParser = function RootParser(mLoger, course, maxGroupNumb, html) {
                 default:
                     const logObj = new loger.LogObject();
                     logObj.setCode(3003);
-                    logObj.toShow = ['ri', 'di', 'ci', 'li'];
+                    logObj.toShow = ['ri', 'di', 'ci', 'dl'];
                     logObj.setMessage('Проверьте праивльность оформления строки! Высота ячейки:' + height);
                     logObj.setDisplayText('Проверьте праивльность оформления строки!');
                     mLoger.log(logObj);
