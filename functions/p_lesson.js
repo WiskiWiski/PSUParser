@@ -51,8 +51,8 @@ module.exports.parseCellContent = function (mLoger, content, toShow) {
         lessonData = extractWeekNumbers(lessonData, resultData);
         lessonData = extractTime(lessonData, resultData);
         lessonData = extractDate(lessonData, resultData);
-        lessonData = extractRoom(lessonData, resultData);
         lessonData = extractCalendarDays(lessonData, resultData);
+        lessonData = extractRoom(lessonData, resultData);
         lessonData = extractLessonType(lessonData, resultData);
         lessonData = extractLesson(lessonData, resultData);
         if (DEBUG_LOGS) console.log('LESSON after: \'%s\'', lessonData);
@@ -228,7 +228,6 @@ module.exports.parseCellContent = function (mLoger, content, toShow) {
                                 dayList.push(dateObj.getTime());
                             }
                         }
-
 
                     }
                 });
