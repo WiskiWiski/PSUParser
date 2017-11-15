@@ -1,17 +1,18 @@
 const pref = require('./preferences.js');
 const loger = require('./loger.js');
+const utils = require('./p_utils.js');
 
 const KEY_TEACHER_NAME = 'teacherName';
 const KEY_ROOM = 'room';
 const KEY_WEEK_NUMBERS = 'weekNumbers';
 const KEY_DAYS = 'days';
-const KEY_DATES = 'date';
+const KEY_DATES = 'dates';
 const KEY_TIME = 'time';
 const KEY_LESSON = 'lesson';
 const KEY_LESSON_TYPE = 'lessonType';
 const KEY_COMMENTS = 'comments';
 
-const DEBUG_LOGS = true;
+const DEBUG_LOGS = false;
 
 const self = this;
 
@@ -206,12 +207,58 @@ module.exports.parseCellContent = function (mLoger, content, toShow) {
                     date = date.replace(/\s*,\s*/, ''); // удаляем запятые
                     date = date.trim();
 
-                    // TODO: конвертировать date в ms
+                    const REG_EXP_MONTH_WORDS = /[А-яё]{3,}/gi;
+                    const REG_EXP_MONTH_DAYS = /[0-9]{1,2}/gi;
+                    const monthList = getByRegExp(date, REG_EXP_MONTH_WORDS);
+                    if (monthList.length === 1) {
+                        const shortMonth = getShortMonth(monthList[0]);
 
-                    dayList.push(date);
+                        const daysList = getByRegExp(date, REG_EXP_MONTH_DAYS);
+                        if (daysList.length === 1) {
+                            const day = daysList[0];
+                            if (day.length < 1 || day.length > 2 || shortMonth === undefined || shortMonth.trim() === '') {
+                                throwError(date);
+                            } else {
+                                const dateObj = utils.getDateFromFormat('d MMM', day + ' ' + shortMonth);
+                                console.log('ДД МЕСЯЦ: ' + day + ' ' + shortMonth);
+                                const ms = dateObj.getTime();
+                                if (ms === 0) {
+                                    throwError(date);
+                                }
+                                dayList.push(dateObj.getTime());
+                            }
+                        }
+
+
+                    }
                 });
                 resultData[KEY_DAYS] = dayList;
             }
+
+            function throwError(date) {
+                const logObj = new loger.LogObject();
+                logObj.setCode(3113);
+                logObj.toShow = toShow;
+                logObj.setPayload(originData);
+                logObj.setMessage('Некорректный форматы календарной даты для пары: \"' + date + '\"');
+                logObj.setDisplayText('Некорректный форматы календарных дней для пары: \"' + date + '\"');
+                mLoger.log(logObj);
+            }
+
+            function getShortMonth(month) {
+                let short;
+                month = month.toLowerCase();
+                utils.MONTH_NAMES.forEach(function (iName) {
+                    if (short !== undefined) {
+                        return;
+                    }
+                    if (month.includes(iName.toLowerCase())) {
+                        short = iName;
+                    }
+                });
+                return short;
+            }
+
             return source;
         }
 
@@ -227,13 +274,23 @@ module.exports.parseCellContent = function (mLoger, content, toShow) {
                 case 1:
                     let time = timeList[0];
                     source = source.replace(time, '');
-
-                    // TODO: конвертировать date в ms
-                    resultData[KEY_TIME] = time.trim();
+                    time = time.trim();
+                    const newDate = utils.getDateFromFormat('H.mm', time);
+                    const ms = newDate.getTime();
+                    if (ms === 0) {
+                        const logObj = new loger.LogObject();
+                        logObj.setCode(3112);
+                        logObj.toShow = toShow;
+                        logObj.setPayload(originData);
+                        logObj.setMessage('Некорректный форматы времени для пары: \"' + time + '\"');
+                        logObj.setDisplayText('Некорректный форматы времени для пары: \"' + time + '\"');
+                        mLoger.log(logObj);
+                    }
+                    resultData[KEY_TIME] = ms;
                     break;
                 default:
+                    // Слишком много найдено
                     tooManyLogString = tooManyLogString + 'Найдено несколько параметров времени: XX:XX; '
-                // TODO: Слишком много найдено
             }
 
             return source;
@@ -254,8 +311,18 @@ module.exports.parseCellContent = function (mLoger, content, toShow) {
                     const clearDates = [];
                     dateList[0].split(/,\s*/g).forEach(function (date) {
                         date = date.trim();
-                        // TODO: конвертировать date в ms
-                        clearDates.push(date);
+                        const newDate = utils.getDateFromFormat('d.MM', date);
+                        const ms = newDate.getTime();
+                        if (ms === 0) {
+                            const logObj = new loger.LogObject();
+                            logObj.setCode(3111);
+                            logObj.toShow = toShow;
+                            logObj.setPayload(originData);
+                            logObj.setMessage('Некорректный форматы даты для пары: \"' + date + '\"');
+                            logObj.setDisplayText('Некорректный форматы даты для пары: \"' + date + '\"');
+                            mLoger.log(logObj);
+                        }
+                        clearDates.push(ms);
                     });
                     resultData[KEY_DATES] = clearDates;
                     break;
