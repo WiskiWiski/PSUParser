@@ -16,7 +16,7 @@ const DEBUG_LOGS = false;
 
 const self = this;
 
-module.exports.parseCellContent = function (mLoger, content, toShow) {
+exports.parseCellContent = function (mLoger, content, toShow) {
     content = content.replace(/\s\s+/g, ' '); // удаляем множественные пробелы
     const lessons = content.split(/;/g);
     const resultLessons = [];
@@ -38,7 +38,7 @@ module.exports.parseCellContent = function (mLoger, content, toShow) {
         const resultData = {};
 
         if (DEBUG_LOGS) console.log('LESSON before: \'%s\'', lessonData);
-        lessonData = extractComments(lessonData, resultData);
+        lessonData = self.extractComments(lessonData, resultData);
 
         if (lessonData.trim() === '') {
             // если после того, как убрали комментария - ячейка пустая
@@ -58,23 +58,6 @@ module.exports.parseCellContent = function (mLoger, content, toShow) {
         if (DEBUG_LOGS) console.log('LESSON after: \'%s\'', lessonData);
         checkResidue(lessonData);
         if (DEBUG_LOGS) console.log(resultData);
-
-        function extractComments(source, resultData) {
-            const REG_EXP_COMMENT = /\/.*\//g;
-            let commentList = getByRegExp(source, REG_EXP_COMMENT);
-            if (commentList.length > 0) {
-                const clearComments = [];
-                commentList.forEach(function (comment) {
-                    source = source.replace(comment, '');
-                    comment = comment.replace(/\//g, '');
-                    comment = comment.trim();
-                    clearComments.push(comment)
-                });
-                resultData[KEY_COMMENTS] = clearComments;
-
-            }
-            return source;
-        }
 
         function extractTeacherName(source, resultData) {
             const REG_EXP_TEACHER = /\s+(-|–)\s+([А-ЯA-ZЁ][а-яa-zё]*(-|–)*)*\s*[А-ЯA-ZЁ]\s*\.([А-ЯA-ZЁ]\s*\.)?/g;
@@ -462,6 +445,40 @@ module.exports.parseCellContent = function (mLoger, content, toShow) {
     }
 
 };
+
+exports.extractComments = function (source, resultData) {
+    const REG_EXP_COMMENT = /\/.*\//g;
+    let commentList = getByRegExp(source, REG_EXP_COMMENT);
+    if (commentList.length > 0) {
+        const clearComments = [];
+        commentList.forEach(function (comment) {
+            source = source.replace(comment, '');
+            comment = comment.replace(/\//g, '');
+            comment = comment.trim();
+            clearComments.push(comment)
+        });
+        resultData[KEY_COMMENTS] = clearComments;
+
+    }
+    return source;
+};
+
+exports.clearHTML = function (htmlString) {
+    htmlString = htmlString.replace(/<\s*((br)|(p))\s*[\/]?>/gi, ' '); // замен <p> и <br> на пробел
+    htmlString = htmlString.replace(/<[^>]*>/g, ''); // очиствка от каких-либо html тегов
+
+    return htmlString.trim();
+};
+
+
+function getByRegExp(source, exp) {
+    const res = source.match(exp);
+    if (res === null) {
+        return [];
+    } else {
+        return res;
+    }
+}
 
 //debug();
 

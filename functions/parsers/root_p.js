@@ -2,7 +2,7 @@
 const loger = require('../loger.js');
 const pref = require('../preferences.js');
 const utils = require('../p_utils.js');
-const lessonParser = require('../p_lesson.js');
+const cellParser = require('../p_cell.js');
 
 const ROW_TYPE_NONE = 'none';
 const ROW_TYPE_SIMPLE_TIME_ROW = 'simple_time_row'; // для строк расписания без ячейки дня
@@ -11,27 +11,31 @@ const ROW_TYPE_GROUP_ROW = 'group_row';
 const ROW_TYPE_EMPTY_ROW = 'empty_row';
 const ROW_TYPE_UNKNOWN_ROW = 'unknown_row';
 
+const PARSE_LESSON_CELL_CONTENT = false;
+const SUB_ROW_HEIGHT = 1;
+
+
 function DoubleRowBuilder(mLoger, schedule) {
     const self = this;
 
     this.build = function (rowInfo) {
         const result = {};
-        const secondRowExpected = rowInfo.secondRowExpected;
+        const subRowNumber = rowInfo.subRowNumber;
 
         let aSubRow = schedule[rowInfo.rowIndex];
         mLoger.logPos.tableRowIndex = rowInfo.rowIndex;
         mLoger.logPos.subRow = loger.SUB_ROW_TITLE_A;
 
         aSubRow = self._buildASubRow(result, aSubRow);
-        analyzeRowForMultirowsCells(aSubRow, secondRowExpected);
+        analyzeRowForMultirowsCells(aSubRow, subRowNumber, 0);
 
-        if (secondRowExpected) {
+        if (subRowNumber > 1) {
             let bSubRow = schedule[rowInfo.rowIndex + 1];
             mLoger.logPos.tableRowIndex = rowInfo.rowIndex + 1;
             mLoger.logPos.subRow = loger.SUB_ROW_TITLE_B;
 
             bSubRow = self._buildBSubRow(result, bSubRow);
-            analyzeRowForMultirowsCells(bSubRow, secondRowExpected);
+            analyzeRowForMultirowsCells(bSubRow, subRowNumber, 1);
 
             const clearDoubleRow = buildClearDoubleRow(aSubRow, bSubRow);
             result['aSubRow'] = clearDoubleRow[0];
@@ -215,35 +219,22 @@ function DoubleRowBuilder(mLoger, schedule) {
     };
 
     // Поиск ячеек, выходящих за границы строки времени
-    function analyzeRowForMultirowsCells(sourceRow, secondRowExpected) {
+    function analyzeRowForMultirowsCells(sourceRow, subGroupNumber, subRowIndex) {
         const cellsNumber = sourceRow.length;
         for (let k = 0; k < cellsNumber; k++) {
             const cell = sourceRow[k];
 
-            let logObj;
-            if (secondRowExpected) {
-                // двойная строка расписания: белая/зелёная
-                if (cell.height > 2) {
-                    logObj = new loger.LogObject();
-                    logObj.setCode(3022);
-                    logObj.setMessage('Ячейка двойной строки имеет высоту: ' + cell.height);
-                    logObj.setDisplayText('Ячека занимет более 1 строки времени расписания.');
-                }
-            } else {
-                // одиночная строка расписания: белая
-                if (cell.height > 1) {
-                    logObj = new loger.LogObject();
-                    logObj.setCode(3012);
-                    logObj.setMessage('Ячейка одиночной строки имеет высоту: ' + cell.height);
-                    logObj.setDisplayText('Ячека занимет более 1 строки времени расписания.');
-                }
-            }
-
-            if (logObj !== undefined) {
+            const subRowHeight = (subGroupNumber - subRowIndex) * SUB_ROW_HEIGHT;
+            if (cell.height > subRowHeight) {
+                let logObj;
+                logObj = new loger.LogObject();
+                logObj.setCode(3005);
+                logObj.setMessage('Ячейка подстроки имеет высоту: ' + cell.height +
+                    ', а максимальная доступная высота строки: ' + subRowHeight);
+                logObj.setDisplayText('Ячека выходит за пределы строки времени расписания.');
                 logObj.toShow = self._getToShow();
                 mLoger.log(logObj);
             }
-
         }
     }
 }
@@ -252,9 +243,21 @@ function DoubleGroupRowBuilder() {
     DoubleRowBuilder.apply(this, arguments);
 
     this._buildASubRow = function (result, sourceRow) {
-        return sourceRow.slice(2);
+        const cells = sourceRow.slice(2);
+        removeComments(cells);
+        return cells;
     };
 
+    this._buildBSubRow = function (result, sourceRow) {
+        removeComments(sourceRow);
+        return sourceRow;
+    };
+
+    function removeComments(cells) {
+        cells.forEach(function (cell) {
+            cell.text = cellParser.extractComments(cell.text, {});
+        });
+    }
 }
 
 function DoubleSimpleTimeRowBuilder(mLoger) {
@@ -306,17 +309,16 @@ function DoubleExtendedTimeRowBuilder(mLoger) {
 }
 
 function parseLessonCellsArray(mLoger, skipped, cells) {
-    if (cells === undefined) {
-        return;
-    }
     const toShow = ['t', 'ri', 'ci', 'dl', 'di', 'sb']; // какие данные записывать в логи при ошибках в parseCellContent()
 
     cells.forEach(function (cell, i) {
         mLoger.logPos.tableCellIndex = skipped + i;
-        let content = cell.element.html();
-        content = content.replace(/<\s*((br)|(p))\s*[\/]?>/gi, ' '); // замен <p> и <br> на пробел
-        content = content.replace(/<[^>]*>/g, ''); // очиствка от каких-либо html тегов
-        cell['cellLesson'] = lessonParser.parseCellContent(mLoger, content, toShow);
+        if (PARSE_LESSON_CELL_CONTENT) {
+            const content = cellParser.clearHTML(cell.element.html());
+            cell['cellLesson'] = cellParser.parseCellContent(mLoger, content, toShow);
+        } else {
+            cell['cellLesson'] = {};
+        }
     });
 
 }
@@ -354,6 +356,8 @@ exports.RootParser = function RootParser(mLoger, course, maxGroupNumb, html) {
         // получает список групп для расписания
         // возвращает массив объектов cell (с группами в ячейках)
 
+        const DEBUG_LOGS = false;
+
         let groups = [];
         const rowNumber = schedule.length; // количество строк таблицы
 
@@ -365,8 +369,9 @@ exports.RootParser = function RootParser(mLoger, course, maxGroupNumb, html) {
             if (rowInfo.type === ROW_TYPE_GROUP_ROW) {
                 const clearDoubleGroupsRow = doubleGroupRowBuilder.build(rowInfo);
                 groups = clearDoubleGroupsRow.bSubRow.map(function (element) {
-                    if (pref.CONSOLE_LOGS_ENABLE) console.log('groups [width=%d] : %s', element.width, element.text);
-                    if (!isCorrectFirebaseKey(element.text)) {
+                    const allow = isCorrectFirebaseKey(element.text);
+                    if (DEBUG_LOGS) console.log('groups [width=%d allow:%s] : %s ', element.width, allow, element.text);
+                    if (!allow) {
                         const logObj = new loger.LogObject();
                         logObj.setCode(3002);
                         logObj.toShow = ['ri'];
@@ -378,7 +383,7 @@ exports.RootParser = function RootParser(mLoger, course, maxGroupNumb, html) {
                     return element;
                 });
 
-                if (pref.CONSOLE_LOGS_ENABLE) console.log();
+                if (DEBUG_LOGS) console.log();
                 break;
             }
         }
@@ -395,25 +400,26 @@ exports.RootParser = function RootParser(mLoger, course, maxGroupNumb, html) {
     };
 
     function isCorrectFirebaseKey(key) {
+        let isCorrect = true;
         if (key === undefined || key === null || key.trim() === '') {
-            return false;
+            isCorrect = false;
         }
 
         const denySymbols = ['[', ']', '.', '/', '$', '#'];
         denySymbols.forEach(function (s) {
             if (key.includes(s)) {
-                return false;
+                isCorrect = false;
             }
         });
 
-        return true;
+        return isCorrect;
     }
 
     this.getRowInfo = function (rowIndex) {
         let resultType = {
             rowIndex: rowIndex,
             type: ROW_TYPE_NONE,
-            secondRowExpected: false
+            subRowNumber: 1
         };
 
         let allCellsEmpty = true;
@@ -423,7 +429,7 @@ exports.RootParser = function RootParser(mLoger, course, maxGroupNumb, html) {
             const cell = row[k];
             mLoger.logPos.tableCellIndex = k;
 
-            if (resultType.secondRowExpected && resultType.type !== ROW_TYPE_NONE) {
+            if (resultType.subRowNumber > 1 && resultType.type !== ROW_TYPE_NONE) {
                 return resultType;
             }
 
@@ -436,7 +442,7 @@ exports.RootParser = function RootParser(mLoger, course, maxGroupNumb, html) {
                 resultType.type = ROW_TYPE_GROUP_ROW;
 
                 // Определение наличия второй подстроки
-                resultType.secondRowExpected = isSecondRowExpected(cell.height);
+                resultType.subRowNumber = getSubRowNumber(cell.height);
                 break;
             }
 
@@ -448,7 +454,7 @@ exports.RootParser = function RootParser(mLoger, course, maxGroupNumb, html) {
                 } else {
                     resultType.type = ROW_TYPE_SIMPLE_TIME_ROW;
                 }
-                resultType.secondRowExpected = isSecondRowExpected(cell.height);
+                resultType.subRowNumber = getSubRowNumber(cell.height);
                 break;
             }
         }
@@ -475,22 +481,21 @@ exports.RootParser = function RootParser(mLoger, course, maxGroupNumb, html) {
 
         return resultType;
 
-        function isSecondRowExpected(height) {
+        function getSubRowNumber(height) {
+            const number = height / SUB_ROW_HEIGHT;
+            const roundNumber = Math.floor(number);
             // Определение наличия второй подстроки
-            switch (height) {
-                case 1:
-                    return false;
-                case 2:
-                    return true;
-                default:
-                    const logObj = new loger.LogObject();
-                    logObj.setCode(3003);
-                    logObj.toShow = ['ri', 'di', 'ci', 'dl'];
-                    logObj.setMessage('Проверьте праивльность оформления строки! Высота ячейки:' + height);
-                    logObj.setDisplayText('Проверьте праивльность оформления строки!');
-                    mLoger.log(logObj);
-
-                    return false;
+            if (number !== roundNumber) {
+                const logObj = new loger.LogObject();
+                logObj.setCode(3003);
+                logObj.toShow = ['ri', 'di', 'ci', 'dl'];
+                logObj.setMessage('Проверьте праивльность оформления строки! Высота ячейки (number != Round(number)):'
+                    + number + '!=' + roundNumber + ' (SUB_ROW_HEIGHT: ' + SUB_ROW_HEIGHT + ')');
+                logObj.setDisplayText('Проверьте праивльность оформления строки!');
+                mLoger.log(logObj);
+                return -1;
+            } else {
+                return number;
             }
         }
 
@@ -528,7 +533,7 @@ exports.RootParser = function RootParser(mLoger, course, maxGroupNumb, html) {
 
         const rowNumber = schedule.length; // количество строк таблицы
 
-        for (let k = 0; k < rowNumber && days.length <= 6; k++) {
+        for (let k = 0; k < rowNumber && days.length <= 6;) {
             mLoger.logPos.tableRowIndex = k;
             mLoger.logPos.weekDayIndex = days.length;
             mLoger.logPos.dayLessonIndex = dayRows.length;
@@ -559,9 +564,7 @@ exports.RootParser = function RootParser(mLoger, course, maxGroupNumb, html) {
                 dayRows.push(clearDoubleTimeRow);
             }
 
-            if (rowInfo.secondRowExpected) {
-                k++;
-            }
+            k += rowInfo.subRowNumber;
         }
 
         // для сохранения строк последнего дня
