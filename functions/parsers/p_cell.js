@@ -1,6 +1,6 @@
-const pref = require('./preferences.js');
-const loger = require('./loger.js');
-const utils = require('./p_utils.js');
+const pref = require('../preferences.js');
+const loger = require('../loger.js');
+const utils = require('../p_utils.js');
 
 const KEY_TEACHER_NAME = 'teacherName';
 const KEY_ROOM = 'room';

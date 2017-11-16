@@ -2,7 +2,7 @@
 const loger = require('../loger.js');
 const pref = require('../preferences.js');
 const utils = require('../p_utils.js');
-const cellParser = require('../p_cell.js');
+const cellParser = require('./p_cell.js');
 
 const ROW_TYPE_NONE = 'none';
 const ROW_TYPE_SIMPLE_TIME_ROW = 'simple_time_row'; // для строк расписания без ячейки дня
@@ -11,7 +11,7 @@ const ROW_TYPE_GROUP_ROW = 'group_row';
 const ROW_TYPE_EMPTY_ROW = 'empty_row';
 const ROW_TYPE_UNKNOWN_ROW = 'unknown_row';
 
-const PARSE_LESSON_CELL_CONTENT = false;
+const PARSE_LESSON_CELL_CONTENT = true;
 const SUB_ROW_HEIGHT = 1;
 
 

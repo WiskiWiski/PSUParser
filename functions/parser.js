@@ -1,7 +1,7 @@
 const cheerio = require('cheerio');
 
 const loger = require('./loger.js');
-const fit_p = require('./parsers/fit_p.js');
+const root_p = require('./parsers/root_p.js');
 const pref = require('./preferences.js');
 const utils = require('./p_utils.js');
 const database = require('./database.js');
@@ -12,8 +12,9 @@ let sgpg;
 
 function getSpecificParserPackage(html, mLoger) {
     switch (fac) {
-        case fit_p.tag:
-            return new fit_p.FitParser(mLoger, course, sgpg, html);
+        case 'gf':
+        case 'fit':
+            return new root_p.RootParser(mLoger, course, sgpg, html);
         default:
             throw Error('Unknown faculty.');
     }
