@@ -20,15 +20,48 @@ exports.parseCellContent = function (mLoger, content, toShow) {
     content = content.replace(/\s\s+/g, ' '); // удаляем множественные пробелы
     const lessons = content.split(/;/g);
     const resultLessons = [];
-    lessons.forEach(function (les) {
+    lessons.forEach(function (les, lesI) {
         les = les.trim();
         if (les !== '') {
-            resultLessons.push(parseLesson(les));
-            if (DEBUG_LOGS) console.log('----------------');
+            if (DEBUG_LOGS && lesI > 0) console.log('-------------И-------------');
+
+            const REG_EXT_FOR_CHOOSE = /(По\s+выбору\s*)|(На\s+выбор\s*):/gi;
+            const REG_EXT_OR = /\s+или\s+/gi;
+
+            const hasOR_TEXT = REG_EXT_OR.test(les);
+            const hasFOR_CHOOSE_TEXT = REG_EXT_FOR_CHOOSE.test(les);
+
+            if (hasFOR_CHOOSE_TEXT && !hasOR_TEXT) {
+                const logObj = new loger.LogObject();
+                logObj.setPayload(les);
+                logObj.toShow = toShow;
+                logObj.setMessage('В тексте предметов ячейки был найден \"НА ВЫБОР\" текст, но не было найдено \"ИЛИ\"');
+                logObj.setDisplayText('Проверьте правильность оформления ячекйи с предметами \"НА ВЫБОР\"');
+                logObj.setCode(3102);
+                mLoger.log(logObj);
+                return;
+            }
+
+            const lessonForChooseList = []; // список предметов на выбор (объекты)
+
+            if (hasOR_TEXT && hasFOR_CHOOSE_TEXT) {
+                // если есть предметы по выбору
+
+                // список предметов на выбор (простой текст)
+                const textLessonForChooseList = les.replace(REG_EXT_FOR_CHOOSE, '').split(REG_EXT_OR);
+                textLessonForChooseList.forEach((lessonForChoose, i) => {
+                        if (DEBUG_LOGS && i > 0) console.log('--------ИЛИ--------');
+                        lessonForChooseList.push(parseLesson(lessonForChoose))
+                    }
+                );
+            } else {
+                lessonForChooseList.push(parseLesson(les));
+            }
+
+            resultLessons.push(lessonForChooseList);
         }
     });
     if (DEBUG_LOGS) console.log('\n');
-
     return resultLessons;
 
 
@@ -257,7 +290,7 @@ exports.parseCellContent = function (mLoger, content, toShow) {
                     let time = timeList[0];
                     source = source.replace(time, '');
                     time = time.trim();
-                    const newDate = utils.getDateFromFormat('H.mm', time);
+                    const newDate = utils.getDateFromFormat('H:mm', time);
                     const ms = newDate.getTime();
                     if (ms === 0) {
                         const logObj = new loger.LogObject();
@@ -366,7 +399,7 @@ exports.parseCellContent = function (mLoger, content, toShow) {
         }
 
         function extractLesson(source, resultData) {
-            const REG_EXP_LESSON = /([А-яЁё\w]{2,}\.?(-|\s+)?)(([А-яЁё\w]\.?(-|\s+)?)+)?/g;
+            const REG_EXP_LESSON = /(([А-яЁё\w:.?!,"&\\](-|\s+)?)+){2,}/g;
 
             let lessonList = getByRegExp(source, REG_EXP_LESSON);
 
@@ -495,13 +528,14 @@ function debug() {
     function contentListFE(content, i) {
         if (content.trim() !== '') {
             if (DEBUG_LOGS) console.log('======= ROW: %d', i + 1);
-            self.parseCellContent(mLoger, content, []);
+            const result = self.parseCellContent(mLoger, content, []);
+            //console.log(result);
         }
     }
 
     function readLessons() {
         const fs = require('fs');
-        const path = '/home/wiskiw/lessons-2.txt';
+        const path = '/home/wiskiw/lessons.txt';
 
         let lessonsString = fs.readFileSync(path, 'utf8');
         const lessons = lessonsString.split("\n");
