@@ -331,26 +331,56 @@ exports.RootParser = function RootParser(mLoger, course, maxGroupNumb, html) {
     const self = this;
 
     this.readScheduleHTMLTable = function (html) {
-        const scheduleTable = html('table').eq(1).children('tbody');
-        const tableRows = [];
-        scheduleTable.children('tr').each(function (k, elem) {
-            const rowElement = scheduleTable.children(elem).first('tr');
-            const rowCells = [];
+        const DEBUG_LOGS = false;
 
-            rowElement.children('td').each(function (k, elem) {
-                const cellElement = rowElement.children(elem).first('td');
+        function getTable() {
+            let scheduleTable = undefined;
+            html('table').each((i, tableElement) => {
+                if (scheduleTable === undefined) {
+                    const htmlStr = html(tableElement).html();
+                    const includeClockText = /Часы/gmi.test(htmlStr);
+                    const includeMondayText = /(>|\s*)(понедельник|пн|пон)(<|\s+|\.)/gmi.test(htmlStr);
 
-                rowCells[k] = {
-                    height: getElementHeight(cellElement),
-                    width: getElementWidth(cellElement),
-                    element: cellElement,
-                    text: cellElement.text().replace(/(\r\n|\n|\r)/gm, "").trim().replace(/\s\s+/gm, ' ')
-                };
+                    if (DEBUG_LOGS) console.log('[%d]: %s %s', i, includeClockText, includeMondayText);
+                    if (includeClockText && includeMondayText) {
+                        scheduleTable = html(tableElement).children('tbody');
+                    }
+                }
             });
+            return scheduleTable;
+        }
 
-            tableRows[k] = rowCells;
-        });
-        return tableRows;
+        let scheduleTable = getTable();
+        if (scheduleTable === undefined) {
+            // таблица с расписанием не была найдена
+            //console.log(mLoger);
+            const logObj = new loger.LogObject();
+            logObj.setCode(3007);
+            logObj.setDisplayText('Не удалось найти таблицу с расписанием');
+            logObj.setMessage('Не удалось найти таблицу с расписанием');
+            mLoger.log(logObj);
+            return [];
+        } else {
+            const tableRows = [];
+            scheduleTable.children('tr').each(function (k, elem) {
+                const rowElement = scheduleTable.children(elem).first('tr');
+                const rowCells = [];
+
+                rowElement.children('td').each(function (k, elem) {
+                    const cellElement = rowElement.children(elem).first('td');
+
+                    rowCells[k] = {
+                        height: getElementHeight(cellElement),
+                        width: getElementWidth(cellElement),
+                        element: cellElement,
+                        text: cellElement.text().replace(/(\r\n|\n|\r)/gm, "").trim().replace(/\s\s+/gm, ' ')
+                    };
+                });
+
+                tableRows[k] = rowCells;
+            });
+            return tableRows;
+        }
     };
     let schedule = this.readScheduleHTMLTable(html);
 

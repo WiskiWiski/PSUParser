@@ -30,9 +30,9 @@ exports.start = function (req, res) {
     sgpg = req.body.sgpg; // Максимальное количество подгрупп в группе
 
     const mLoger = new loger.Loger();
-    const parserPackage = getSpecificParserPackage(html, mLoger);
 
     try {
+        const parserPackage = getSpecificParserPackage(html, mLoger);
         const groups = parserPackage.getGroups();
         const dayList = parserPackage.getTimeRows();
 
