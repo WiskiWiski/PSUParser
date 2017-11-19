@@ -266,7 +266,9 @@ function DoubleSimpleTimeRowBuilder(mLoger) {
     this._buildASubRow = function (result, sourceRow) {
         const time = sourceRow[0].text;
         mLoger.logPos.rowTime = time;
-        result['time'] = time;
+        const toShow = ['t', 'ri', 'ci', 'dl', 'di', 'sb'];
+        result['time'] = cellParser.parseTimeCellContent(mLoger, time, toShow);
+
         const cells = sourceRow.slice(1);
         parseLessonCellsArray(mLoger, 1, cells);
         return cells;
@@ -291,7 +293,8 @@ function DoubleExtendedTimeRowBuilder(mLoger) {
 
         const time = sourceRow[1].text;
         mLoger.logPos.rowTime = time;
-        result['time'] = time;
+        const toShow = ['t', 'ri', 'ci', 'dl', 'di', 'sb'];
+        result['time'] = cellParser.parseTimeCellContent(mLoger, time, toShow);
 
         const cells = sourceRow.slice(2);
         parseLessonCellsArray(mLoger, 2, cells);
@@ -500,8 +503,8 @@ exports.RootParser = function RootParser(mLoger, course, maxGroupNumb, html) {
         }
 
         function isTimeCell(cellText) {
-            // проверка значения ячейки на содержание (1-9 или . или , или пробела)
-            return utils.REG_EXPRESSION_FOR_DATE_CELL.test(cellText);
+            // проверка значения ячейки от начала до конца на содержание 1-9 или : или -
+            return /^[0-9:\s-]+$/gmi.test(cellText);
         }
     };
 
@@ -600,8 +603,10 @@ exports.RootParser = function RootParser(mLoger, course, maxGroupNumb, html) {
                 if (pref.CONSOLE_LOGS_ENABLE) {
                     bgWeekColor = pref.BG_COLOR_WHITE;
                     fgWeekColor = pref.FG_COLOR_MARGENTA;
+                    const date = new Date(row.time.startTime);
                     console.log(pref.FG_COLOR_BLUE + pref.STYLE_BRIGHT + pref.STYLE_BLINK + pref.STYLE_UNDERSCORE +
-                        "\n================ TIME: %s ================" + pref.COLORS_DEFAULT, row.time);
+                        "\n================ START TIME: %d:%d ================" +
+                        pref.COLORS_DEFAULT, date.getHours(), date.getMinutes());
                 }
             } else {
                 subRowTitle = loger.SUB_ROW_TITLE_B;

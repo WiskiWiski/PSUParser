@@ -479,6 +479,73 @@ exports.parseCellContent = function (mLoger, content, toShow) {
 
 };
 
+exports.parseTimeCellContent = function (mLoger, content, toShow) {
+    const DEBUG_LOGS = false;
+
+    const originData = content;
+    self.extractComments(content, {});
+
+    const resultTime = {
+        startTime: -1,
+        endTime: -1
+    };
+
+    const REG_EXP_NON_TIME = /[^0-9\s:]\s*-?\s*[^0-9\s:]/gi;
+    if (REG_EXP_NON_TIME.test(content)) {
+        // ошибка в данных ячейки времени: содержит данные кроме времени
+        const logObj = new loger.LogObject();
+        logObj.setCode(3201);
+        logObj.toShow = toShow;
+        logObj.setPayload(originData);
+        logObj.setMessage('Ячейка со временем расписания содержит недопустимые символы: \"' + content + '\"');
+        logObj.setDisplayText('Ячейка со временем расписания содержит недопустимые символы');
+        mLoger.log(logObj);
+    } else {
+        const REG_EXP_TIME_CELL = /[0-9]{1,2}\s*:\s*[0-9]{2}/gi;
+        const timeList = getByRegExp(content, REG_EXP_TIME_CELL);
+        if (timeList.length === 2) {
+            const startTimeStr = timeList[0].replace(/\s*/g, '');
+            const endTimeStr = timeList[1].replace(/\s*/g, '');
+
+            resultTime.startTime = toMs(startTimeStr);
+            if (DEBUG_LOGS) console.log('START TIME: %s = %d', startTimeStr, resultTime.startTime);
+
+            resultTime.endTime = toMs(endTimeStr);
+            if (DEBUG_LOGS) console.log('END TIME: %s = %d\n', endTimeStr, resultTime.startTime);
+
+            function toMs(stringTime) {
+                const time = utils.getDateFromFormat('H:mm', stringTime);
+                const ms = time.getTime();
+                if (ms === 0) {
+                    // ошибка конвертации: неверный формат
+                    const logObj = new loger.LogObject();
+                    logObj.setCode(3203);
+                    logObj.toShow = toShow;
+                    logObj.setPayload(time);
+                    logObj.setMessage('Не удалось пропарсить время по формату H:mm  : \"' + time + '\"');
+                    logObj.setDisplayText('Не удалось прочитать время по формату ЧЧ:ММ (Ч:ММ)');
+                    mLoger.log(logObj);
+                }
+                return ms;
+            }
+
+        } else {
+            // много/мало времени найдено
+            const logObj = new loger.LogObject();
+            logObj.setCode(3202);
+            logObj.toShow = toShow;
+            logObj.setPayload(originData);
+            logObj.setMessage('В ячейке со временем расписания было найдено ' + timeList.length +
+                ' времён(время): \"' + content + '\"');
+            logObj.setDisplayText('В ячейке со временем расписания было найдено ' + timeList.length +
+                ' времён(время)');
+            mLoger.log(logObj);
+        }
+    }
+
+    return resultTime;
+};
+
 exports.extractComments = function (source, resultData) {
     const REG_EXP_COMMENT = /\/.*\//g;
     let commentList = getByRegExp(source, REG_EXP_COMMENT);
