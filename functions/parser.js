@@ -84,59 +84,74 @@ exports.start = function (req, res) {
     const endTime = new Date().getTime();
     console.log("The analyze took: " + (endTime - startTime) + "ms.");
     res.status(200).end(JSON.stringify(jsonLogs));
+
+
+    function saveLGRowToJson(json, row, dayIndex, rowIndex, time) {
+        // Сохраняет строку в json
+        function forColorRow(colorRow, color) {
+            colorRow.forEach(function (groupLessons) {
+                const groupName = groupLessons.groupName;
+                const len = groupLessons.lessons.length;
+
+                // если массив lessons содержит только одну подгруппу, сохраняем её же для других
+                for (let subGroupN = 0; subGroupN < len || (len === 1 && subGroupN < sgpg); subGroupN++) {
+                    const subGroupLesson = subGroupN >= len ? groupLessons.lessons[0] : groupLessons.lessons[subGroupN];
+
+                    if (subGroupN + 1 > sgpg) {
+                        const logObj = new loger.LogObject();
+                        logObj.setCode(3006);
+                        logObj.toShow = ['dl', 'di', 'dt', 'sb'];
+                        logObj.setPayload(subGroupLesson.text);
+                        logObj.setDisplayText('Проверьте правильность соответствия границ групп и предметов');
+                        logObj.setMessage('У группы найдено ' + (subGroupN + 1) +
+                            ' подгруппы при максимально кол-ве подгрупп ' + sgpg);
+                        mLoger.log(logObj);
+                    }
+
+                    const val = {
+                        cellHtml: subGroupLesson.element.html(),
+                        lesson: subGroupLesson.text,
+                        cellLesson: subGroupLesson.cellLesson,
+                        time: time
+                    };
+                    const jsonPath = [color, groupName, subGroupN + 1, dayIndex + 1, rowIndex + 1];
+                    pushToJson(json, val, jsonPath);
+                }
+            });
+        }
+
+
+        mLoger.logPos.subRow = loger.SUB_ROW_TITLE_A;
+        forColorRow(row[loger.SUB_ROW_TITLE_A], 'white');
+        if (row[loger.SUB_ROW_TITLE_B] === undefined) {
+            forColorRow(row[loger.SUB_ROW_TITLE_A], 'green');
+        } else {
+            mLoger.logPos.subRow = loger.SUB_ROW_TITLE_B;
+            forColorRow(row[loger.SUB_ROW_TITLE_B], 'green');
+        }
+
+    }
+
+    function pushToJson(json, val, path) {
+        // Записывает данные в json объект по указанному пути
+        // json - объект, в который будут записаны данные
+        // val - данные для записи
+        // path - массив, содержащий путь для записи
+
+        const firstPath = path[0];
+        const secondPath = path[1];
+
+        if (json[firstPath] === undefined) {
+            json[firstPath] = {};
+        }
+
+        if (secondPath === undefined) {
+            Object.assign(json[firstPath], val);
+        } else {
+            delete arguments[2];
+            path = path.splice(1, path.length - 1);
+            pushToJson(json[firstPath], val, path);
+        }
+    }
+
 };
-
-function saveLGRowToJson(json, row, dayIndex, rowIndex, time) {
-    // Сохраняет строку в json
-    function forColorRow(colorRow, color) {
-        colorRow.forEach(function (groupLessons) {
-            const groupName = groupLessons.groupName;
-            const len = groupLessons.lessons.length;
-
-            // если массив lessons содержит только одну подгруппу, сохраняем её же для других
-            for (let subGroupN = 0; subGroupN < len || (len === 1 && subGroupN < sgpg); subGroupN++) {
-                const subGroupLesson = subGroupN >= len ? groupLessons.lessons[0] : groupLessons.lessons[subGroupN];
-
-                const val = {
-                    cellHtml: subGroupLesson.element.html(),
-                    lesson: subGroupLesson.text,
-                    cellLesson: subGroupLesson.cellLesson,
-                    time: time
-                };
-                const jsonPath = [color, groupName, subGroupN + 1, dayIndex + 1, rowIndex + 1];
-                pushToJson(json, val, jsonPath);
-            }
-        });
-    }
-
-
-    forColorRow(row[loger.SUB_ROW_TITLE_A], 'white');
-    if (row[loger.SUB_ROW_TITLE_B] === undefined) {
-        forColorRow(row[loger.SUB_ROW_TITLE_A], 'green');
-    } else {
-        forColorRow(row[loger.SUB_ROW_TITLE_B], 'green');
-    }
-
-}
-
-function pushToJson(json, val, path) {
-    // Записывает данные в json объект по указанному пути
-    // json - объект, в который будут записаны данные
-    // val - данные для записи
-    // path - массив, содержащий путь для записи
-
-    const firstPath = path[0];
-    const secondPath = path[1];
-
-    if (json[firstPath] === undefined) {
-        json[firstPath] = {};
-    }
-
-    if (secondPath === undefined) {
-        Object.assign(json[firstPath], val);
-    } else {
-        delete arguments[2];
-        path = path.splice(1, path.length - 1);
-        pushToJson(json[firstPath], val, path);
-    }
-}
