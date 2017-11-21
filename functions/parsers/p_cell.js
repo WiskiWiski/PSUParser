@@ -135,14 +135,35 @@ exports.parseCellContent = function (mLoger, content, toShow) {
                     source = source.replace(weekNumbersStr, '');
                     weekNumbersStr = weekNumbersStr.replace(/[\sн\(\)]*/gi, ''); // удаляем пробелы, 'н' и скобки
 
-                    if (weekNumbersStr.includes(',') && (weekNumbersStr.includes('-') || weekNumbersStr.includes('–'))) {
-                        resultData[KEY_WEEK_NUMBERS] = parseWeeksDashComma(weekNumbersStr);
-                    } else if (weekNumbersStr.includes(',')) {
-                        resultData[KEY_WEEK_NUMBERS] = parseWeeksComma(weekNumbersStr);
-                    } else if (weekNumbersStr.includes('-') || weekNumbersStr.includes('–')) {
-                        resultData[KEY_WEEK_NUMBERS] = parseWeeksDash(weekNumbersStr);
-                    } else {
-                        resultData[KEY_WEEK_NUMBERS] = parseWeeksNumber(weekNumbersStr);
+                    const weekNumbersStringGroupList = weekNumbersStr.split(',');
+
+                    if (weekNumbersStringGroupList.length > 0) {
+                        resultData[KEY_WEEK_NUMBERS] = [];
+                        weekNumbersStringGroupList.forEach(function (weekNumberStringGroup) {
+                            weekNumberStringGroup = weekNumberStringGroup.trim();
+
+                            if (weekNumberStringGroup.includes('-') || weekNumberStringGroup.includes('–')) {
+                                resultData[KEY_WEEK_NUMBERS] = resultData[KEY_WEEK_NUMBERS]
+                                    .concat(parseWeeksDash(weekNumberStringGroup));
+
+                            } else if (/[0-9]+/g.test(weekNumberStringGroup)) {
+                                resultData[KEY_WEEK_NUMBERS] = resultData[KEY_WEEK_NUMBERS]
+                                    .concat(parseWeeksNumber(weekNumberStringGroup));
+
+                            } else {
+                                const logObj = new loger.LogObject();
+                                logObj.setCode(3104);
+                                logObj.setMessage('Неверный формат текста группы конкретизации недель( XXX, .... н):\'' +
+                                    weekNumberStringGroup + '\'');
+                                logObj.toShow = toShow;
+                                logObj.setPayload(originData);
+                                logObj.setDisplayText('Проверьте правиль оформления недель для предмета');
+                                mLoger.log(logObj);
+                            }
+                        });
+                        if (resultData[KEY_WEEK_NUMBERS].length > 0) {
+                            resultData[KEY_WEEK_NUMBERS].sort((a, b) => a - b)
+                        }
                     }
                     break;
                 default:
@@ -164,29 +185,6 @@ exports.parseCellContent = function (mLoger, content, toShow) {
                     logObj.setCode(2103);
                     mLoger.log(logObj);
                 }
-            }
-
-            function parseWeeksDashComma(weekNumbersStr) {
-                let weekNumbers = [];
-                const weekNumbersString = weekNumbersStr.split(',');
-                weekNumbersString.forEach(function (strDash) {
-                    weekNumbers = weekNumbers.concat(parseWeeksDash(strDash));
-                });
-                return weekNumbers;
-            }
-
-            function parseWeeksComma(weekNumbersStr) {
-                const weekNumbers = [];
-                const weekNumbersString = weekNumbersStr.split(',');
-                weekNumbersString.forEach(function (strNumber) {
-                    const number = parseInt(strNumber);
-                    if (!isNaN(number)) {
-                        weekNumbers.push(number);
-                    } else {
-                        parseIntError(strNumber);
-                    }
-                });
-                return weekNumbers;
             }
 
             function parseWeeksDash(weekNumbersStr) {
