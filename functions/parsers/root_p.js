@@ -414,7 +414,7 @@ exports.RootParser = function RootParser(mLoger, course, maxGroupNumb, html) {
 
     function clearGroupName(group) {
         const REG_EXP_DENY_SYMBOLS = /[\[\]\./$#()]/g;
-        const REG_EXP_YEAR = /[0-9]{2}(\s*[-–])?/g;
+        const REG_EXP_YEAR = /[0-9]{2}(\s*[-−–—])?/g;
         const REG_EXP_GROUP_COURSE = /([А-яёЁA-z]{2,})([0-9])/;
 
         const originGroup = group;

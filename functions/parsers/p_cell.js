@@ -93,7 +93,7 @@ exports.parseCellContent = function (mLoger, content, toShow) {
         if (DEBUG_LOGS) console.log(resultData);
 
         function extractTeacherName(source, resultData) {
-            const REG_EXP_TEACHER = /\s+(-|–)\s+([А-ЯA-ZЁ][а-яa-zё]*(-|–)*)*\s*[А-ЯA-ZЁ]\s*\.([А-ЯA-ZЁ]\s*\.)?/g;
+            const REG_EXP_TEACHER = /\s+[-−–—]\s+([А-ЯA-ZЁ][а-яa-zё]*[-−–—]*)*\s*[А-ЯA-ZЁ]\s*\.([А-ЯA-ZЁ]\s*\.)?/g;
             let teacherList = getByRegExp(source, REG_EXP_TEACHER);
             switch (teacherList.length) {
                 case 0:
@@ -103,7 +103,7 @@ exports.parseCellContent = function (mLoger, content, toShow) {
                     let teacherName = teacherList[0];
                     source = source.replace(teacherName, '');
 
-                    teacherName = teacherName.replace(/\s+(-|–)\s+/g, ' ');
+                    teacherName = teacherName.replace(/\s+[-−–—]\s+/g, ' ');
                     resultData[KEY_TEACHER_NAME] = teacherName.trim();
 
                     if (teacherName.includes('-')) {
@@ -120,7 +120,7 @@ exports.parseCellContent = function (mLoger, content, toShow) {
         }
 
         function extractWeekNumbers(source, resultData) {
-            const REG_EXP_WEEK_NUMBERS = /\(([0-9]|,|[-–]|н|\s)*\)/gi;
+            const REG_EXP_WEEK_NUMBERS = /\(([0-9]|,|[-−–—]|н|\s)*\)/gi;
 
             let weekNumberList = getByRegExp(source, REG_EXP_WEEK_NUMBERS);
 
@@ -189,7 +189,7 @@ exports.parseCellContent = function (mLoger, content, toShow) {
 
             function parseWeeksDash(weekNumbersStr) {
                 const weekNumbers = [];
-                const startEndIndexes = weekNumbersStr.split(/[-–]/g);
+                const startEndIndexes = weekNumbersStr.split(/[-−–—]/g);
                 if (startEndIndexes.length !== 2) {
                     const logObj = new loger.LogObject();
                     logObj.setPayload(originData);
@@ -626,8 +626,8 @@ function getByRegExp(source, exp) {
 function debug() {
     const contentList = readLessons();
     const mLoger = {
-        log: function (code) {
-            // ...do nothing
+        log: function (logObj) {
+            console.log(logObj.getMessage());
             return this;
         }
     };
