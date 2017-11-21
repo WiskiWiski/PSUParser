@@ -369,7 +369,7 @@ exports.parseCellContent = function (mLoger, content, toShow) {
         }
 
         function extractRoom(source, resultData) {
-            const REG_EXP_ROOM = /([0-9]){1,3}[А-Ж|Н| ]/gi;
+            const REG_EXP_ROOM = /([0-9]){1,3}[А-ЖACE|Н|\s*]/gi;
 
             // для более точной обработки в конце строки должен быть пробел
             let roomList = getByRegExp(source + ' ', REG_EXP_ROOM);
@@ -435,20 +435,11 @@ exports.parseCellContent = function (mLoger, content, toShow) {
                     break;
                 case 1:
                     let lesson = lessonList[0];
-                    source = source.replace(lesson, '');
 
-                    const REG_EXP_CHECK_TEACHER = /[A-ZА-ЯЁ]\s*\./g; // Инициалы препода: И.О.
-                    const initialList = getByRegExp(lesson, REG_EXP_CHECK_TEACHER);
-                    if (initialList.length > 1) {
-                        // если в название предмета попали инициалы (или что-то похожее)
-                        const logObj = new loger.LogObject();
-                        logObj.setPayload(originData);
-                        logObj.toShow = toShow;
-                        logObj.setMessage('Найдены подозрительные на иницалы символы в названии предмета: ' + initialList);
-                        logObj.setDisplayText('Проверьте правильность оформления имени преподавателя');
-                        logObj.setCode(2201);
-                        mLoger.log(logObj);
-                    }
+                    checkForTeacherName(lesson);
+                    checkNumbers(lesson);
+
+                    source = source.replace(lesson, '');
 
                     resultData[KEY_LESSON] = lesson.trim();
                     break;
@@ -458,6 +449,37 @@ exports.parseCellContent = function (mLoger, content, toShow) {
             }
 
             return source;
+
+            function checkForTeacherName(lesson) {
+                const REG_EXP_CHECK_TEACHER = /[A-ZА-ЯЁ]\s*\./g; // Инициалы препода: И.О.
+                if (REG_EXP_CHECK_TEACHER.test(lesson)) {
+                    // если в название предмета попали инициалы (или что-то похожее)
+                    const logObj = new loger.LogObject();
+                    logObj.setPayload(originData);
+                    logObj.toShow = toShow;
+                    logObj.setMessage('Найдены подозрительные на иницалы символы в названии предмета: ' + lesson);
+                    logObj.setDisplayText('Проверьте правильность оформления имени преподавателя');
+                    logObj.setCode(2104);
+                    mLoger.log(logObj);
+                }
+            }
+
+            function checkNumbers(lesson) {
+                const REG_EXT_WORDS_AROUND_NUMBER =
+                    /([А-яЁёA-z][0-9])|([0-9][А-яЁёA-z])/g; // буквы рдом с цифрами: я9 1с
+                if (REG_EXT_WORDS_AROUND_NUMBER.test(lesson)) {
+                    // найдены цифры, рядом с которыми стоят буквы (без пробела)
+                    const logObj = new loger.LogObject();
+                    logObj.setPayload(originData);
+                    logObj.toShow = toShow;
+                    logObj.setMessage('В названии предмета найдены цифры с вплотную прилегающими к ним буквами: \'' +
+                        lesson + '\'');
+                    logObj.setDisplayText('Название предмета не может содержать числа ' +
+                        'с вплотную прилегающими к ним буквами');
+                    logObj.setCode(2105);
+                    mLoger.log(logObj);
+                }
+            }
 
         }
 
