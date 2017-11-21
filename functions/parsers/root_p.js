@@ -417,6 +417,8 @@ exports.RootParser = function RootParser(mLoger, course, maxGroupNumb, html) {
         const REG_EXP_YEAR = /[0-9]{2}(\s*[-–])?/g;
         const REG_EXP_GROUP_COURSE = /([А-яёЁA-z]{2,})([0-9])/;
 
+        const originGroup = group;
+
         group = cellParser.extractComments(group, {});
 
         group = group.replace(REG_EXP_DENY_SYMBOLS, '');
@@ -428,6 +430,17 @@ exports.RootParser = function RootParser(mLoger, course, maxGroupNumb, html) {
             group = match[1] + '-' + match[2];
         }
         group = group.trim().toUpperCase();
+
+        if (group === '') {
+            const logObj = new loger.LogObject();
+            logObj.setCode(3002);
+            logObj.toShow = ['ci', 'ri', 'sb'];
+            logObj.setMessage('Ячейка группы пустая: \'' + originGroup + '\'');
+            logObj.setDisplayText('Найдена пустая ячейка группы. Проверьте правильность оформления групп в таблице.');
+            logObj.setPayload(originGroup);
+            mLoger.log(logObj);
+        }
+
         return group;
     }
 
