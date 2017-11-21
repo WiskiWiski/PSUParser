@@ -120,7 +120,7 @@ exports.parseCellContent = function (mLoger, content, toShow) {
         }
 
         function extractWeekNumbers(source, resultData) {
-            const REG_EXP_WEEK_NUMBERS = /\(([0-9]|,|-|н|\s)*\)/gi;
+            const REG_EXP_WEEK_NUMBERS = /\(([0-9]|,|[-–]|н|\s)*\)/gi;
 
             let weekNumberList = getByRegExp(source, REG_EXP_WEEK_NUMBERS);
 
@@ -135,56 +135,14 @@ exports.parseCellContent = function (mLoger, content, toShow) {
                     source = source.replace(weekNumbersStr, '');
                     weekNumbersStr = weekNumbersStr.replace(/[\sн\(\)]*/gi, ''); // удаляем пробелы, 'н' и скобки
 
-                    const weekNumbers = [];
-                    if (weekNumbersStr.includes(',')) {
-                        const weekNumbersString = weekNumbersStr.split(',');
-                        weekNumbersString.forEach(function (strNumber) {
-                            const number = parseInt(strNumber);
-                            if (!isNaN(number)) {
-                                weekNumbers.push(number);
-                            } else {
-                                parseIntError(strNumber);
-                            }
-                        });
-                        resultData[KEY_WEEK_NUMBERS] = weekNumbers;
-
-                    } else if (weekNumbersStr.includes('-')) {
-                        const startEndIndexes = weekNumbersStr.split('-');
-                        if (startEndIndexes.length !== 2) {
-                            const logObj = new loger.LogObject();
-                            logObj.setPayload(originData);
-                            logObj.setMessage('При формате указания недель предмета: (X-XXн), было найдено ' + startEndIndexes.length +
-                                ' числовых значений');
-                            logObj.toShow = toShow;
-                            logObj.setDisplayText('Проверьте правильность указания неделей для предмета');
-                            logObj.setCode(2102);
-                            mLoger.log(logObj);
-                        }
-
-                        startEndIndexes.forEach(function (strNumber, i) {
-                            const number = parseInt(strNumber);
-                            if (!isNaN(number)) {
-                                startEndIndexes[i] = number;
-                            } else {
-                                parseIntError(strNumber);
-                            }
-                        });
-
-                        const iFrom = startEndIndexes[0];
-                        const iTo = startEndIndexes[1];
-                        for (let k = iFrom; k <= iTo; k++) {
-                            weekNumbers.push(k);
-                        }
-                        resultData[KEY_WEEK_NUMBERS] = weekNumbers;
-
+                    if (weekNumbersStr.includes(',') && (weekNumbersStr.includes('-') || weekNumbersStr.includes('–'))) {
+                        resultData[KEY_WEEK_NUMBERS] = parseWeeksDashComma(weekNumbersStr);
+                    } else if (weekNumbersStr.includes(',')) {
+                        resultData[KEY_WEEK_NUMBERS] = parseWeeksComma(weekNumbersStr);
+                    } else if (weekNumbersStr.includes('-') || weekNumbersStr.includes('–')) {
+                        resultData[KEY_WEEK_NUMBERS] = parseWeeksDash(weekNumbersStr);
                     } else {
-                        const number = parseInt(weekNumbersStr);
-                        if (!isNaN(number)) {
-                            weekNumbers[0] = number;
-                            resultData[KEY_WEEK_NUMBERS] = weekNumbers;
-                        } else {
-                            parseIntError(weekNumbersStr);
-                        }
+                        resultData[KEY_WEEK_NUMBERS] = parseWeeksNumber(weekNumbersStr);
                     }
                     break;
                 default:
@@ -206,6 +164,69 @@ exports.parseCellContent = function (mLoger, content, toShow) {
                     logObj.setCode(2103);
                     mLoger.log(logObj);
                 }
+            }
+
+            function parseWeeksDashComma(weekNumbersStr) {
+                let weekNumbers = [];
+                const weekNumbersString = weekNumbersStr.split(',');
+                weekNumbersString.forEach(function (strDash) {
+                    weekNumbers = weekNumbers.concat(parseWeeksDash(strDash));
+                });
+                return weekNumbers;
+            }
+
+            function parseWeeksComma(weekNumbersStr) {
+                const weekNumbers = [];
+                const weekNumbersString = weekNumbersStr.split(',');
+                weekNumbersString.forEach(function (strNumber) {
+                    const number = parseInt(strNumber);
+                    if (!isNaN(number)) {
+                        weekNumbers.push(number);
+                    } else {
+                        parseIntError(strNumber);
+                    }
+                });
+                return weekNumbers;
+            }
+
+            function parseWeeksDash(weekNumbersStr) {
+                const weekNumbers = [];
+                const startEndIndexes = weekNumbersStr.split(/[-–]/g);
+                if (startEndIndexes.length !== 2) {
+                    const logObj = new loger.LogObject();
+                    logObj.setPayload(originData);
+                    logObj.setMessage('При формате указания недель предмета: (X-XXн), было найдено ' + startEndIndexes.length +
+                        ' числовых значений');
+                    logObj.toShow = toShow;
+                    logObj.setDisplayText('Проверьте правильность указания неделей для предмета');
+                    logObj.setCode(2102);
+                    mLoger.log(logObj);
+                }
+
+                startEndIndexes.forEach(function (strNumber, i) {
+                    const number = parseInt(strNumber);
+                    if (!isNaN(number)) {
+                        startEndIndexes[i] = number;
+                    } else {
+                        parseIntError(strNumber);
+                    }
+                });
+                const iFrom = startEndIndexes[0];
+                const iTo = startEndIndexes[1];
+                for (let k = iFrom; k <= iTo; k++) {
+                    weekNumbers.push(k);
+                }
+                return weekNumbers;
+            }
+
+            function parseWeeksNumber(weekNumbersStr) {
+                const number = parseInt(weekNumbersStr);
+                if (!isNaN(number)) {
+                    return [number];
+                } else {
+                    parseIntError(weekNumbersStr);
+                }
+                return [];
             }
 
             return source;
