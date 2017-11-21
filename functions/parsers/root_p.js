@@ -229,6 +229,7 @@ function DoubleRowBuilder(mLoger, schedule) {
                 let logObj;
                 logObj = new loger.LogObject();
                 logObj.setCode(3005);
+                logObj.setPayload(cell.text);
                 logObj.setMessage('Ячейка подстроки имеет высоту: ' + cell.height +
                     ', а максимальная доступная высота строки: ' + subRowHeight);
                 logObj.setDisplayText('Ячека выходит за пределы строки времени расписания.');
@@ -243,21 +244,9 @@ function DoubleGroupRowBuilder() {
     DoubleRowBuilder.apply(this, arguments);
 
     this._buildASubRow = function (result, sourceRow) {
-        const cells = sourceRow.slice(2);
-        removeComments(cells);
-        return cells;
+        return sourceRow.slice(2);
     };
 
-    this._buildBSubRow = function (result, sourceRow) {
-        removeComments(sourceRow);
-        return sourceRow;
-    };
-
-    function removeComments(cells) {
-        cells.forEach(function (cell) {
-            cell.text = cellParser.extractComments(cell.text, {});
-        });
-    }
 }
 
 function DoubleSimpleTimeRowBuilder(mLoger) {
@@ -402,17 +391,8 @@ exports.RootParser = function RootParser(mLoger, course, maxGroupNumb, html) {
             if (rowInfo.type === ROW_TYPE_GROUP_ROW) {
                 const clearDoubleGroupsRow = doubleGroupRowBuilder.build(rowInfo);
                 groups = clearDoubleGroupsRow.bSubRow.map(function (element) {
-                    const allow = isCorrectFirebaseKey(element.text);
-                    if (DEBUG_LOGS) console.log('groups [width=%d allow:%s] : %s ', element.width, allow, element.text);
-                    if (!allow) {
-                        const logObj = new loger.LogObject();
-                        logObj.setCode(3002);
-                        logObj.toShow = ['ri'];
-                        logObj.setMessage('Ячейка группы содержит недопустимый символ или пустая: \'' + element.text + '\'');
-                        logObj.setDisplayText('Проверьте правильность оформления групп в таблице.');
-                        logObj.setPayload(element.text);
-                        mLoger.log(logObj);
-                    }
+                    element.text = clearGroupName(element.text);
+                    if (DEBUG_LOGS) console.log('groups [width=%d] : %s ', element.width, element.text);
                     return element;
                 });
 
@@ -432,20 +412,23 @@ exports.RootParser = function RootParser(mLoger, course, maxGroupNumb, html) {
         return groups;
     };
 
-    function isCorrectFirebaseKey(key) {
-        let isCorrect = true;
-        if (key === undefined || key === null || key.trim() === '') {
-            isCorrect = false;
+    function clearGroupName(group) {
+        const REG_EXP_DENY_SYMBOLS = /[\[\]\./$#()]/g;
+        const REG_EXP_YEAR = /[0-9]{2}(\s*[-–])?/g;
+        const REG_EXP_GROUP_COURSE = /([А-яёЁA-z]{2,})([0-9])/;
+
+        group = cellParser.extractComments(group, {});
+
+        group = group.replace(REG_EXP_DENY_SYMBOLS, '');
+        group = group.replace(REG_EXP_YEAR, '');
+
+        const match = group.match(REG_EXP_GROUP_COURSE);
+        // match: [ 'ргф1', 'ргф', '1']
+        if (match !== null && match !== undefined && match.length === 3) {
+            group = match[1] + '-' + match[2];
         }
-
-        const denySymbols = ['[', ']', '.', '/', '$', '#'];
-        denySymbols.forEach(function (s) {
-            if (key.includes(s)) {
-                isCorrect = false;
-            }
-        });
-
-        return isCorrect;
+        group = group.trim().toUpperCase();
+        return group;
     }
 
     this.getRowInfo = function (rowIndex) {
