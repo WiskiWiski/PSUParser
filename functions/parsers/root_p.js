@@ -419,7 +419,7 @@ exports.RootParser = function RootParser(mLoger, course, maxGroupNumb, html) {
 
         const originGroup = group;
 
-        group = cellParser.extractComments(group, {});
+        group = cellParser.extractComments(mLoger, group, {}, ['ri', 'ci', 'sb']);
 
         group = group.replace(REG_EXP_DENY_SYMBOLS, '');
         group = group.replace(REG_EXP_YEAR, '');

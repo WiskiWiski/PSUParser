@@ -72,7 +72,7 @@ exports.parseCellContent = function (mLoger, content, toShow) {
         const resultData = {};
 
         if (DEBUG_LOGS) console.log('LESSON before: \'%s\'', lessonData);
-        lessonData = self.extractComments(lessonData, resultData);
+        lessonData = self.extractComments(mLoger, lessonData, resultData, toShow);
 
         if (lessonData.trim() === '') {
             // если после того, как убрали комментария - ячейка пустая
@@ -418,7 +418,7 @@ exports.parseCellContent = function (mLoger, content, toShow) {
         }
 
         function extractLesson(source, resultData) {
-            const REG_EXP_LESSON = /(([А-яЁё\w\(\):.?!,"&\\]([-−–—]|\s+)?)+){2,}/g;
+            const REG_EXP_LESSON = /(([А-яЁё\w\(\)«»:.?!,"&\\]([-−–—]|\s+)?)+){2,}/g;
 
             let lessonList = getByRegExp(source, REG_EXP_LESSON);
 
@@ -522,7 +522,7 @@ exports.parseTimeCellContent = function (mLoger, content, toShow) {
     const DEBUG_LOGS = false;
 
     const originData = content;
-    self.extractComments(content, {});
+    self.extractComments(mLoger, content, {}, toShow);
 
     const resultTime = {
         startTime: -1,
@@ -585,19 +585,31 @@ exports.parseTimeCellContent = function (mLoger, content, toShow) {
     return resultTime;
 };
 
-exports.extractComments = function (source, resultData) {
-    const REG_EXP_COMMENT = /\/.*\//g;
-    let commentList = getByRegExp(source, REG_EXP_COMMENT);
-    if (commentList.length > 0) {
-        const clearComments = [];
-        commentList.forEach(function (comment) {
-            source = source.replace(comment, '');
-            comment = comment.replace(/\//g, '');
-            comment = comment.trim();
-            clearComments.push(comment)
-        });
-        resultData[KEY_COMMENTS] = clearComments;
-
+exports.extractComments = function (mLoger, source, resultData, toShow) {
+    const REG_EXP_COMMENT = /(\/[^/]*\/)+/g;
+    const REG_EXP_SLASH = /\//g; // слэш - /
+    const slashNumber = getByRegExp(source, REG_EXP_SLASH).length;
+    if (slashNumber > 0 && slashNumber % 2 !== 0) {
+        const logObj = new loger.LogObject();
+        logObj.setCode(3105);
+        logObj.toShow = toShow || [];
+        logObj.setPayload(source);
+        console.log(slashNumber);
+        logObj.setMessage('Ячейка содержит нечётное количество \"/\": ' + slashNumber);
+        logObj.setDisplayText('Ячейка не может содержать нечётное количество "/"');
+        mLoger.log(logObj);
+    } else {
+        let commentList = getByRegExp(source, REG_EXP_COMMENT);
+        if (commentList.length > 0) {
+            const clearComments = [];
+            commentList.forEach(function (comment) {
+                source = source.replace(comment, '');
+                comment = comment.replace(/\//g, '');
+                comment = comment.trim();
+                clearComments.push(comment)
+            });
+            resultData[KEY_COMMENTS] = clearComments;
+        }
     }
     return source;
 };
