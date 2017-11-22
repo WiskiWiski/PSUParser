@@ -25,40 +25,41 @@ exports.parseCellContent = function (mLoger, content, toShow) {
         if (les !== '') {
             if (DEBUG_LOGS && lesI > 0) console.log('-------------И-------------');
 
-            const REG_EXT_FOR_CHOOSE = /(По\s+выбору\s*)|(На\s+выбор\s*):/gi;
+            const REG_EXT_FOR_CHOICE = /((По\s+выбору)|(На\s+выбор))\s*:\s*/gi;
             const REG_EXT_OR = /\s+или\s+/gi;
 
             const hasOR_TEXT = REG_EXT_OR.test(les);
-            const hasFOR_CHOOSE_TEXT = REG_EXT_FOR_CHOOSE.test(les);
+            const hasFOR_CHOICE_TEXT = REG_EXT_FOR_CHOICE.test(les);
 
-            if (hasFOR_CHOOSE_TEXT && !hasOR_TEXT) {
+            if (hasFOR_CHOICE_TEXT && !hasOR_TEXT) {
                 const logObj = new loger.LogObject();
                 logObj.setPayload(les);
                 logObj.toShow = toShow;
-                logObj.setMessage('В тексте предметов ячейки был найден \"НА ВЫБОР\" текст, но не было найдено \"ИЛИ\"');
+                logObj.setMessage('В тексте предметов ячейки был найден \"НА ВЫБОР\" текст, ' +
+                    'но не было найдено ни одного \"ИЛИ\"');
                 logObj.setDisplayText('Проверьте правильность оформления ячекйи с предметами \"НА ВЫБОР\"');
                 logObj.setCode(3102);
                 mLoger.log(logObj);
                 return;
             }
 
-            const lessonForChooseList = []; // список предметов на выбор (объекты)
+            const lessonForChoiceList = []; // список предметов на выбор (объекты)
 
-            if (hasOR_TEXT && hasFOR_CHOOSE_TEXT) {
+            if (hasOR_TEXT && hasFOR_CHOICE_TEXT) {
                 // если есть предметы по выбору
 
                 // список предметов на выбор (простой текст)
-                const textLessonForChooseList = les.replace(REG_EXT_FOR_CHOOSE, '').split(REG_EXT_OR);
-                textLessonForChooseList.forEach((lessonForChoose, i) => {
+                const textLessonForChoiceList = les.replace(REG_EXT_FOR_CHOICE, '').split(REG_EXT_OR);
+                textLessonForChoiceList.forEach((lessonForChoose, i) => {
                         if (DEBUG_LOGS && i > 0) console.log('--------ИЛИ--------');
-                        lessonForChooseList.push(parseLesson(lessonForChoose))
+                        lessonForChoiceList.push(parseLesson(lessonForChoose))
                     }
                 );
             } else {
-                lessonForChooseList.push(parseLesson(les));
+                lessonForChoiceList.push(parseLesson(les));
             }
 
-            resultLessons.push(lessonForChooseList);
+            resultLessons.push(lessonForChoiceList);
         }
     });
     if (DEBUG_LOGS) console.log('\n');
@@ -88,7 +89,6 @@ exports.parseCellContent = function (mLoger, content, toShow) {
         lessonData = extractRoom(lessonData, resultData);
         lessonData = extractLessonType(lessonData, resultData);
         lessonData = extractLesson(lessonData, resultData);
-        if (DEBUG_LOGS) console.log('LESSON after: \'%s\'', lessonData);
         checkResidue(lessonData);
         if (DEBUG_LOGS) console.log(resultData);
 
@@ -142,7 +142,7 @@ exports.parseCellContent = function (mLoger, content, toShow) {
                         weekNumbersStringGroupList.forEach(function (weekNumberStringGroup) {
                             weekNumberStringGroup = weekNumberStringGroup.trim();
 
-                            if (weekNumberStringGroup.includes('-') || weekNumberStringGroup.includes('–')) {
+                            if (/[-−–—]/g.test(weekNumberStringGroup)) {
                                 resultData[KEY_WEEK_NUMBERS] = resultData[KEY_WEEK_NUMBERS]
                                     .concat(parseWeeksDash(weekNumberStringGroup));
 
@@ -418,7 +418,7 @@ exports.parseCellContent = function (mLoger, content, toShow) {
         }
 
         function extractLesson(source, resultData) {
-            const REG_EXP_LESSON = /(([А-яЁё\w:.?!,"&\\](-|\s+)?)+){2,}/g;
+            const REG_EXP_LESSON = /(([А-яЁё\w\(\):.?!,"&\\]([-−–—]|\s+)?)+){2,}/g;
 
             let lessonList = getByRegExp(source, REG_EXP_LESSON);
 
@@ -437,7 +437,7 @@ exports.parseCellContent = function (mLoger, content, toShow) {
                     let lesson = lessonList[0];
 
                     checkForTeacherName(lesson);
-                    checkNumbers(lesson);
+                    checkForRoomNumbers(lesson);
 
                     source = source.replace(lesson, '');
 
@@ -457,25 +457,23 @@ exports.parseCellContent = function (mLoger, content, toShow) {
                     const logObj = new loger.LogObject();
                     logObj.setPayload(originData);
                     logObj.toShow = toShow;
-                    logObj.setMessage('Найдены подозрительные на иницалы символы в названии предмета: ' + lesson);
+                    logObj.setMessage('В названии предмета найдены подозрительные на иницалы символы: ' + lesson);
                     logObj.setDisplayText('Проверьте правильность оформления имени преподавателя');
                     logObj.setCode(2104);
                     mLoger.log(logObj);
                 }
             }
 
-            function checkNumbers(lesson) {
-                const REG_EXT_WORDS_AROUND_NUMBER =
-                    /([А-яЁёA-z][0-9])|([0-9][А-яЁёA-z])/g; // буквы рдом с цифрами: я9 1с
-                if (REG_EXT_WORDS_AROUND_NUMBER.test(lesson)) {
-                    // найдены цифры, рядом с которыми стоят буквы (без пробела)
+            function checkForRoomNumbers(lesson) {
+                const REG_EXP_ROOM = /([0-9]){1,3}[А-ЖACE|Н|\s*]/gi;
+
+                if (REG_EXP_ROOM.test(lesson)) {
+                    // найдены подозрительный на аудиторию текст
                     const logObj = new loger.LogObject();
                     logObj.setPayload(originData);
                     logObj.toShow = toShow;
-                    logObj.setMessage('В названии предмета найдены цифры с вплотную прилегающими к ним буквами: \'' +
-                        lesson + '\'');
-                    logObj.setDisplayText('Название предмета не может содержать числа ' +
-                        'с вплотную прилегающими к ним буквами');
+                    logObj.setMessage('В названии предмета найдены подозрительные на номер аудитории символы: ' + lesson);
+                    logObj.setDisplayText('Проверьте правильность оформления аудитории предмета');
                     logObj.setCode(2105);
                     mLoger.log(logObj);
                 }
