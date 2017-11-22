@@ -19,17 +19,26 @@ const DB_PATH = '/schedule/';
 
 
 module.exports.save = function saveJson(fac, course, json) {
-    // некорректно работает с несколькими запросами из-за goOffline()
-    database.goOnline();
+    
     const path = DB_PATH + fac + '/' + course + '/';
-    database.ref(path).set(json, listener);
-
-    function listener(error) {
-        if (error) {
-            console.log("Data could for " + path + "not be saved." + error);
-        } else {
-            console.log("Data for " + path + " saved successfully.");
-        }
-        database.goOffline();
-    }
+	
+	let reqCount = 0; // количество запросов на сохранение
+	let resCount = 0; // количество ответов
+	database.goOnline();
+	for(let key in json){	
+		reqCount++;
+		database.ref(path).child(key).set(json[key], function(error) {
+			resCount++;
+			if (error){
+				console.log("Saving aborted! Saving data for %s/ has faild (%d/%d): %s", path + key, resCount, reqCount, error);
+				database.goOffline();
+			} else {
+				console.log("Data for %s/ has saved successfully (%d/%d).", path + key, resCount, reqCount);
+				if (resCount >= reqCount){
+					console.log("All data for %s has saved successfully (%d/%d).", path, resCount, reqCount);
+					database.goOffline();
+				}
+			}
+		});
+	}	
 };

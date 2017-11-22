@@ -114,7 +114,7 @@ exports.start = function (req, res) {
                         cellLesson: subGroupLesson.cellLesson,
                         time: time
                     };
-                    const jsonPath = [color, groupName, subGroupN + 1, dayIndex + 1, rowIndex + 1];
+                    const jsonPath = [groupName, subGroupN + 1, color, dayIndex + 1, rowIndex + 1];
                     pushToJson(json, val, jsonPath);
                 }
             });
