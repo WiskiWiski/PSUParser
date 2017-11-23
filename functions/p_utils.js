@@ -104,7 +104,7 @@ exports.getDayByIndex = function (dayIndex) {
 };
 
 
-exports.getDateFromFormat = function (format, val) {
+exports.getDateFromFormat = function (format, val, timezone) {
 
     /*
     Thanks for http://www.mattkruse.com/javascript/date/ !
@@ -127,6 +127,11 @@ exports.getDateFromFormat = function (format, val) {
 
 
     const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+    if (timezone === undefined){
+        // значение по дефолту
+        timezone = 3;
+    }
 
     val = val + "";
     format = format + "";
@@ -291,7 +296,15 @@ exports.getDateFromFormat = function (format, val) {
     } else if (hh > 11 && ampm == "AM") {
         hh -= 12;
     }
-    return new Date(year, month - 1, date, hh, mm, ss);
+
+    const offset = new Date().getTimezoneOffset();
+
+    // * 60000 - minutes -> ms
+    // -60 * timezone - т к изначально всё время попадающее сюда локальное
+    const resultDate = new Date(year, month - 1, date, hh, mm, ss);
+    resultDate.setTime(resultDate.getTime() + (-60 * timezone - offset) * 60000);
+
+    return resultDate;
 
     function errorResult() {
         return new Date(0);
