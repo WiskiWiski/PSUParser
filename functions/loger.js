@@ -206,12 +206,12 @@ exports.LogObject = function LogObject() {
         } else {
             resStr = '[' + statusStr + ':' + code + ']: ' + message;
         }
-        return (self.logPos.when() + "   " + resStr);
+        return (self.logPos.where() + "   " + resStr);
     };
 
     this.toJSON = function () {
         return {
-            when: buildPos(),
+            where: buildPos(),
             code: code,
             payload: payload,
             message: message || '',
@@ -240,7 +240,7 @@ function LogPosition(pos) {
         self.rowTime = null;
     }
 
-    self.when = function () {
+    self.where = function () {
         return '[ri:' + self.tableRowIndex + ' ci:' + self.tableCellIndex + ' dl:' + self.dayLessonIndex +
             ' di:' + self.weekDayIndex + ' t:\"' + self.rowTime + '\" sb:' + self.subRow + ']';
     };

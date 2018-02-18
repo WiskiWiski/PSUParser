@@ -13,7 +13,7 @@ const app = express(); // для запуска сервера
 const port = 3000;
 
 
-autostart();
+//autostart();
 
 function autostart() {
     // для локального запуска
@@ -22,7 +22,7 @@ function autostart() {
     const html = cheerio.load(htmlStr, {decodeEntities: false});
 
     const req = {
-        body:{
+        body: {
             html: html.html(),
             course: offLineCourse,
             fac: 'fit',
@@ -53,11 +53,17 @@ function main(req, res) {
 
 /////////////////////////////////////// SERVER ///////////////////////////////////////////
 app.use(cors({origin: true})); // одобрение междоменных запросов
-app.use(bodyParser.json()); // одобрение междоменных запросов
+app.use(bodyParser.json({limit: '50mb'}));
+app.use(bodyParser.urlencoded({limit: '50mb', extended: true}));
+
 
 app.post('/', (req, res) => {
     main(req, res);
     //res.end(main(DEFAULT_COURSE, DEFAULT_FAC));
+});
+
+app.post('/psu_saver', (req, res) => {
+    require("./index.js").psu_saver(req, res);
 });
 
 

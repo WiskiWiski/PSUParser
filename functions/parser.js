@@ -6,6 +6,9 @@ const pref = require('./preferences.js');
 const utils = require('./p_utils.js');
 const database = require('./database.js');
 
+const GUIDELINE_LINK = 'www.t.me/wiski_w';
+const GUIDELINE_VERSION = '0.1';
+
 let course;
 let fac;
 let sgpg;
@@ -30,6 +33,7 @@ exports.start = function (req, res) {
     sgpg = req.body.sgpg; // Максимальное количество подгрупп в группе
 
     const mLoger = new loger.Loger();
+    const responseJson = {};
 
     try {
         const parserPackage = getSpecificParserPackage(html, mLoger);
@@ -58,7 +62,7 @@ exports.start = function (req, res) {
 
             dayRowsList.forEach(function (dayRow, rowIndex) {
                 // lessons and groups
-                mLoger.logPos.rowTime = dayRow.time;
+                mLoger.logPos.rowTime = dayRow.time.startTime + ' - ' + dayRow.time.endTime;
                 mLoger.logPos.dayLessonIndex = rowIndex;
 
                 const lAndG = parserPackage.linkLessonsGroupsForRow(dayRow, groups);
@@ -66,7 +70,8 @@ exports.start = function (req, res) {
             });
         });
 
-        database.save(fac, course, finalJson);
+        responseJson.data = finalJson;
+        //database.save(fac, course, finalJson);
     } catch (err) {
         if (err.name === loger.NAME_LOG_ERROR) {
             console.error('========= Processing aborted! =========');
@@ -81,9 +86,15 @@ exports.start = function (req, res) {
     mLoger.printLogs(true);
     //database.save('logs', '', jsonLogs);
 
-    const endTime = new Date().getTime();
-    console.log("The analyze took: " + (endTime - startTime) + "ms.");
-    res.status(200).end(JSON.stringify(jsonLogs));
+    const analyzeTime = (new Date().getTime() - startTime);
+    console.log("The analyze took: " + analyzeTime + "ms.");
+
+    responseJson.analyzeTime = analyzeTime;
+    responseJson.guideLineLink = GUIDELINE_LINK;
+    responseJson.guideLineVersion = GUIDELINE_VERSION;
+    responseJson.logs = jsonLogs;
+
+    res.status(200).end(JSON.stringify(responseJson));
 
 
     function saveLGRowToJson(json, row, dayIndex, rowIndex, time) {
